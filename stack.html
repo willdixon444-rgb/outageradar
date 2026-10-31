@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My stack – OutageRadar</title>
+<meta name="description" content="Every tool I use to build, host and monitor trading bots with AI, and what I think of each one.">
+<link rel="canonical" href="https://liveoutageradar.com/stack.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap-wide">
+    <a class="wordmark" href="/">OutageRadar</a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/stack.html" aria-current="page">My stack</a>
+      <a href="/about.html">About</a>
+      <a href="/disclosure.html">Disclosure</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <h1 style="margin-top:3rem">My stack</h1>
+  <p class="lede">The tools I use to build, host and monitor my trading bots. I’m not a professional coder, so everything here has to work for someone learning as they go.</p>
+  <p class="meta">Last checked October 26, 2026</p>
+  <p class="meta">Some links below may be affiliate links. <a href="/disclosure.html">Read the disclosure</a>.</p>
+  <article class="tool">
+    <h3>Claude</h3>
+    <p class="kind">AI coding assistant</p>
+    <dl>
+      <dt>What I use it for</dt>
+      <dd>Writing and debugging all of the code behind my bots. I describe what I want, review what comes back, and iterate.</dd>
+      <dt>My take</dt>
+      <dd>This is the reason I can build bots at all. I explain what I want in plain English and get working code back, along with an explanation of what it does. The catch is that AI can be confidently wrong, so I make it diagnose a problem and explain its plan before it writes any code, and I test everything on paper before it touches real money. If you’re willing to test carefully, it’s the best starting point for a non-coder.</dd>
+    </dl>
+    <a href="https://claude.ai" rel="noopener" data-affiliate="pending">Visit Claude</a>
+  </article>
+  <article class="tool">
+    <h3>GitHub</h3>
+    <p class="kind">Code storage and version history</p>
+    <dl>
+      <dt>What I use it for</dt>
+      <dd>Keeping every version of every bot so I can roll back when something breaks.</dd>
+      <dt>My take</dt>
+      <dd>Every bot lives in its own repo, and that history has saved me more than once after a bad change. The terminology (commits, branches, pushes) takes some getting used to, but you can start by uploading files through the website and learn the rest as you go. Essential for anyone building anything.</dd>
+    </dl>
+    <a href="https://github.com" rel="noopener" data-affiliate="pending">Visit GitHub</a>
+  </article>
+  <article class="tool">
+    <h3>Render</h3>
+    <p class="kind">Hosting</p>
+    <dl>
+      <dt>What I use it for</dt>
+      <dd>Running my bots and web apps around the clock without managing a server myself.</dd>
+      <dt>My take</dt>
+      <dd>Connect a GitHub repo and Render redeploys every time you push a change, which is about as simple as hosting gets. The dashboard, logs and settings take a little learning, and it’s worth keeping an eye on which services are free and which are paid. A good fit if you want your bot running 24/7 without becoming a server admin.</dd>
+    </dl>
+    <a href="https://render.com" rel="noopener" data-affiliate="pending">Visit Render</a>
+  </article>
+  <article class="tool">
+    <h3>Supabase</h3>
+    <p class="kind">Database</p>
+    <dl>
+      <dt>What I use it for</dt>
+      <dd>Storing trades, signals and logs in a PostgreSQL database my bots read and write.</dd>
+      <dt>My take</dt>
+      <dd>Its web dashboard lets me look at my bots’ data in tables without writing code, which makes checking what a bot actually did much easier. Databases have a learning curve, and planning your tables before you start saves headaches later. Worth it as soon as your bot needs to remember anything between runs.</dd>
+    </dl>
+    <a href="https://supabase.com" rel="noopener" data-affiliate="pending">Visit Supabase</a>
+  </article>
+  <article class="tool">
+    <h3>Discord</h3>
+    <p class="kind">Alerts</p>
+    <dl>
+      <dt>What I use it for</dt>
+      <dd>Sending my bots’ alerts and status updates to my phone in real time.</dd>
+      <dt>My take</dt>
+      <dd>I run a private server where my bots post updates, so my phone tells me what’s happening wherever I am. Setting up a webhook is free and simple. The trick is deciding what deserves an alert, because a noisy bot gets ignored fast. Great for anyone who wants free, real-time notifications.</dd>
+    </dl>
+    <a href="https://discord.com" rel="noopener" data-affiliate="pending">Visit Discord</a>
+  </article>
+  <article class="tool">
+    <h3>Python and Flask</h3>
+    <p class="kind">Programming language and web framework</p>
+    <dl>
+      <dt>What I use it for</dt>
+      <dd>The language and framework my bots are written in. Free and open source.</dd>
+      <dt>My take</dt>
+      <dd>Python has a library for almost everything in trading, and AI assistants write it well, which matters when you’re not a coder. Flask handles the small web pieces, like status pages and endpoints. The most common headaches are package versions that work on my machine but not on the server. A safe default for your first bot.</dd>
+    </dl>
+    <a href="https://flask.palletsprojects.com" rel="noopener" data-affiliate="pending">Visit Python and Flask</a>
+  </article>
+</main>
+<footer class="site-footer">
+  <div class="wrap-wide">
+    <p>Some links on this site are affiliate links. If you sign up through them, I may earn a commission at no extra cost to you. <a href="/disclosure.html">How that works</a>.</p>
+    <nav aria-label="Footer">
+      <a href="/about.html">About</a>
+      <a href="/disclosure.html">Affiliate disclosure</a>
+      <a href="/privacy.html">Privacy</a>
+    </nav>
+    <p class="meta" style="margin-top:1rem">&copy; 2026 OutageRadar. Nothing here is financial advice.</p>
+  </div>
+</footer>
+</body>
+</html>
