@@ -2,6 +2,29 @@
 
 Read this whole file before making any change. It applies to every AI agent working on this repo.
 
+## Current state (read this first)
+
+- **Domain:** liveoutageradar.com. Registered at IONOS; DNS is on Cloudflare (free plan, records set to DNS only, grey cloud). Render has the custom domain verified and https is working. The old onrender.com address still works.
+- **What is live right now:** a coming-soon placeholder page. `index.html` and `robots.txt` in the repo were edited by hand on GitHub. The page has a `noindex` meta tag, and `robots.txt` says `Disallow: /`, so search engines are asked to stay away until launch.
+- **The old starter pages** (stack.html, about.html, disclosure.html, privacy.html) still exist in the repo and can be opened by direct URL, but they are not linked from the placeholder and crawlers are blocked.
+- **The real status board does not exist yet.**
+
+## Launch gate: coming-soon placeholder (important)
+
+**Danger:** `build.py` generates `index.html`, `robots.txt` and `sitemap.xml`. Running it as it is today overwrites the placeholder page and replaces `robots.txt` with a version that lets search engines in.
+
+Before running `build.py` for any reason:
+1. Add a clear switch near the top, for example `COMING_SOON = True`. While it is on, `build.py` must not write `index.html`, `robots.txt` or `sitemap.xml`, or must write the coming-soon versions.
+2. Tell the owner what you changed.
+
+**Do not remove the `noindex` tag or the `Disallow: /` line until the owner explicitly says to launch.** At launch:
+1. Replace the placeholder `index.html` with the real status board.
+2. Delete the `noindex` meta tag.
+3. Change `robots.txt` to `User-agent: *`, `Allow: /`, and `Sitemap: https://liveoutageradar.com/sitemap.xml`.
+4. Make sure `sitemap.xml` lists only pages that should be public.
+5. Open the live page source in a private window and confirm there is no `noindex`, and that `robots.txt` no longer says `Disallow`.
+6. Decide with the owner what happens to the old starter pages: keep, rewrite for OutageRadar, or delete.
+
 ## What this project is
 
 Brand name: **OutageRadar**. Domain: **liveoutageradar.com** (the domain has "live" in front; the brand name does not). Logo: a green military-radar emblem with fixed dots for tracked services, a sweeping line, and an amber LIVE tag.
