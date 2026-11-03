@@ -18,6 +18,6 @@ Static site: plain HTML + one stylesheet. No build step, no database, no account
 ## Deploy on Render (free static site)
 1. Create a new GitHub repo (e.g. outageradar) and upload these files to it.
 2. In Render: New > Static Site > connect the repo.
-3. Leave Build Command empty. Set Publish Directory to .
+3. Leave Build Command empty. Set Publish Directory to site (only the site/ folder is public).
 4. Deploy. You'll get a free onrender.com address to test on.
 5. When you buy the domain, add it in the site's Custom Domains settings in Render and follow its DNS steps.

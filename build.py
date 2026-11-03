@@ -2,6 +2,27 @@
 DOMAIN = "https://liveoutageradar.com"   # change if you buy a different domain
 CHECKED = "October 26, 2026"
 
+# ---------- LAUNCH GATE ----------
+# While COMING_SOON is True, this script will NOT write index.html,
+# robots.txt or sitemap.xml. That keeps the coming-soon placeholder and the
+# "Disallow: /" rule from being overwritten by accident.
+# Only the owner flips this to False, and only at launch.
+# Note: the live site is served from the site/ folder. This script writes to
+# the repo root, so its output is not live until it is copied into site/.
+COMING_SOON = True
+PROTECTED = ("index.html", "robots.txt", "sitemap.xml")
+SKIPPED = []
+WRITTEN = []
+
+def write_file(filename, text):
+    """Write one output file, unless the launch gate protects it."""
+    if COMING_SOON and filename in PROTECTED:
+        SKIPPED.append(filename)
+        return
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(text)
+    WRITTEN.append(filename)
+
 HEAD = """<!doctype html>
 <html lang="en">
 <head>
@@ -49,8 +70,7 @@ def page(filename, title, desc, body):
         for href, label in NAV)
     path = "" if filename == "index.html" else filename
     html = HEAD.format(title=title, desc=desc, domain=DOMAIN, path=path, nav=nav) + body + FOOT
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(html)
+    write_file(filename, html)
 
 # ---------- Home ----------
 page("index.html",
@@ -194,12 +214,14 @@ page("404.html",
 """)
 
 # ---------- robots + sitemap ----------
-with open("robots.txt", "w") as f:
-    f.write(f"User-agent: *\nAllow: /\nSitemap: {DOMAIN}/sitemap.xml\n")
+write_file("robots.txt", f"User-agent: *\nAllow: /\nSitemap: {DOMAIN}/sitemap.xml\n")
 urls = ["", "stack.html", "about.html", "disclosure.html", "privacy.html"]
-with open("sitemap.xml", "w") as f:
-    f.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-    for u in urls:
-        f.write(f"  <url><loc>{DOMAIN}/{u}</loc><lastmod>2026-10-26</lastmod></url>\n")
-    f.write("</urlset>\n")
-print("built")
+sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+for u in urls:
+    sitemap += f"  <url><loc>{DOMAIN}/{u}</loc><lastmod>2026-10-26</lastmod></url>\n"
+sitemap += "</urlset>\n"
+write_file("sitemap.xml", sitemap)
+
+print("built: " + ", ".join(WRITTEN))
+if SKIPPED:
+    print("COMING_SOON is on, so these were NOT written: " + ", ".join(SKIPPED))
