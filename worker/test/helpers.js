@@ -3,16 +3,16 @@
 
 export const URLS = {
   openai: {
-    feed: "https://status.openai.com/api/v2/summary.json",
-    probe: "https://chatgpt.com/",
+    feed: "https://status.openai.com/api/v2/status.json",
+    probe: "https://api.openai.com/v1/models",
   },
   mistral: {
     feed: "https://status.mistral.ai/api/v2/status.json",
-    probe: "https://chat.mistral.ai/",
+    probe: "https://api.mistral.ai/v1/models",
   },
   perplexity: {
-    feed: "https://status.perplexity.com/v2/components.json",
-    probe: "https://www.perplexity.ai/",
+    feed: "https://status.perplexity.com/api/v2/summary.json",
+    probe: "https://api.perplexity.ai/chat/completions",
   },
   groq: {
     feed: "https://groqstatus.com/api/v2/components.json",
@@ -74,16 +74,16 @@ export const components = (list) => ({ components: list });
 
 // Default healthy world. Tests override single URLs via `routes`.
 export function healthyRoutes() {
+  const unauthorized = () => json({ error: { message: "missing api key" } }, 401);
   return {
     [URLS.openai.feed]: () => json(statuspage("none")),
     [URLS.mistral.feed]: () => json(statuspage("none")),
-    [URLS.perplexity.feed]: () =>
-      json(components([{ name: "Website", status: "OPERATIONAL" }, { name: "API", status: "OPERATIONAL" }])),
+    [URLS.perplexity.feed]: () => json(statuspage("none")),
     [URLS.groq.feed]: () =>
       json(components([{ name: "API", status: "operational" }, { name: "Website", status: "operational" }])),
-    [URLS.openai.probe]: () => html("<html><title>ChatGPT</title></html>"),
-    [URLS.mistral.probe]: () => html("<html><title>Le Chat</title></html>"),
-    [URLS.perplexity.probe]: () => html("<html><title>Perplexity</title></html>"),
+    [URLS.openai.probe]: unauthorized,
+    [URLS.mistral.probe]: unauthorized,
+    [URLS.perplexity.probe]: unauthorized,
     [URLS.groq.probe]: () => html("<html><title>GroqCloud</title></html>"),
   };
 }

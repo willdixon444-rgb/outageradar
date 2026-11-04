@@ -41,7 +41,9 @@ test("probe result is still shown in sample mode", async () => {
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
   assert.equal(svc(body, "openai").probe.status, "reachable");
-  assert.equal(svc(body, "openai").probe.label, "Site reachable (HTTP 200)");
+  assert.equal(svc(body, "openai").probe.label, "API server answering (our check)");
+  assert.equal(svc(body, "groq").probe.status, "reachable");
+  assert.equal(svc(body, "groq").probe.label, "Site reachable (HTTP 200)");
 });
 
 test("raw samples are saved once and announced once in the health channel", async () => {
@@ -81,18 +83,92 @@ test("statuspage indicators map to our status words", async () => {
   }
 });
 
-test("components feeds use the worst listed component, including uppercase names", async () => {
+test("components feeds use the worst listed component", async () => {
   setup({
-    [URLS.perplexity.feed]: () => json(components([
-      { name: "Website", status: "OPERATIONAL" }, { name: "API", status: "MAJOROUTAGE" }])),
     [URLS.groq.feed]: () => json(components([
       { name: "API", status: "partial_outage" }, { name: "Website", status: "operational" }])),
   });
   const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
-  assert.equal(svc(body, "perplexity").official.status, "major_outage");
   assert.equal(svc(body, "groq").official.status, "partial_outage");
+});
+
+test("components feeds accept uppercase Instatus spellings", async () => {
+  setup({
+    [URLS.groq.feed]: () => json(components([
+      { name: "API", status: "MAJOROUTAGE" }, { name: "Website", status: "OPERATIONAL" }])),
+  });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "groq").official.status, "major_outage");
+});
+
+test("perplexity reads the page-wide indicator from its summary feed", async () => {
+  setup({ [URLS.perplexity.feed]: () => json(statuspage("major")) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "perplexity").official.status, "partial_outage");
+});
+
+test("mistral is named for what its feed covers", async () => {
+  setup();
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "mistral").name, "Mistral");
+});
+
+test("an API probe answering 401 counts as the server answering", async () => {
+  setup();
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  for (const id of ["openai", "mistral", "perplexity"]) {
+    assert.equal(svc(body, id).probe.status, "reachable", id);
+    assert.equal(svc(body, id).probe.http_status, 401, id);
+  }
+});
+
+test("perplexity API probe also accepts 405 for a GET on a POST endpoint", async () => {
+  setup({ [URLS.perplexity.probe]: () => json({ error: "method not allowed" }, 405) });
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "perplexity").probe.status, "reachable");
+});
+
+test("an unexpected 4xx on an API probe is unknown, not answering", async () => {
+  setup({ [URLS.openai.probe]: () => json({ error: "gone" }, 404) });
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "openai").probe.status, "unknown");
+});
+
+test("a site probe does not treat 401 as reachable", async () => {
+  setup({ [URLS.groq.probe]: () => html("login", 401) });
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "groq").probe.status, "unknown");
+});
+
+test("a challenge on an API probe is unknown even with an expected code", async () => {
+  setup({ [URLS.openai.probe]: () => json({}, 401, { "cf-mitigated": "challenge" }) });
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "openai").probe.status, "unknown");
+});
+
+test("alert wording names an API check correctly", async () => {
+  setup({ [URLS.openai.feed]: () => json(statuspage("critical")) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  assert.match(alerts()[0], /API server answering/);
 });
 
 test("components outside the approved list are ignored", async () => {

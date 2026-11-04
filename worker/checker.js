@@ -28,7 +28,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 const STATE_KEY = "state:v1";
 const SAMPLES_KEY = "samples:v1";
@@ -51,41 +51,57 @@ const ALLOWED_ORIGINS = [
   "https://www.liveoutageradar.com",
 ];
 
-// Feed URLs were opened by hand on Nov 3, 2026. "samples" lists extra
-// candidate URLs saved once for review; only "feed" is polled each run.
-// "parser" and "components" are PROPOSED mappings: they are not used for
-// the public board until the service id is listed in APPROVED_MAPPINGS.
+// Feed URLs were opened by hand on Nov 3, 2026 and confirmed by the first
+// live samples (v1.0). "samples" lists extra URLs saved once for review; only
+// "feed" is polled each run. "parser" and "components" are the mapping, used
+// for the public board only when the service id is in APPROVED_MAPPINGS.
+//
+// Probes: chatgpt.com, chat.mistral.ai and www.perplexity.ai answer automated
+// checks with a Cloudflare challenge (HTTP 403), so those services are probed
+// at their API servers instead. Without a key an API server answers 401 (or
+// 405 for a GET on a POST-only endpoint): that proves the server is up and
+// answering, not that the AI works. The label says so.
+// "probe_ok" lists the extra status codes that count as answering; any 2xx
+// always counts.
+const SITE_LABEL = "Site reachable (HTTP 200)";
+const API_LABEL = "API server answering (our check)";
+
 const SERVICES = [
   {
     id: "openai",
     name: "ChatGPT / OpenAI",
     status_page: "https://status.openai.com",
-    feed: "https://status.openai.com/api/v2/summary.json",
-    samples: ["https://status.openai.com/api/v2/status.json"],
+    feed: "https://status.openai.com/api/v2/status.json",
+    samples: [],
     parser: "statuspage_indicator",
-    probe: "https://chatgpt.com/",
+    probe: "https://api.openai.com/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
   },
   {
     id: "mistral",
-    name: "Mistral (Le Chat)",
+    name: "Mistral",
     status_page: "https://status.mistral.ai",
     feed: "https://status.mistral.ai/api/v2/status.json",
-    samples: ["https://status.mistral.ai/api/v2/summary.json"],
+    samples: [],
     parser: "statuspage_indicator",
-    probe: "https://chat.mistral.ai/",
+    probe: "https://api.mistral.ai/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
   },
   {
     id: "perplexity",
     name: "Perplexity",
     status_page: "https://status.perplexity.com",
-    feed: "https://status.perplexity.com/v2/components.json",
-    samples: [
-      "https://status.perplexity.com/api/v2/summary.json",
-      "https://status.perplexity.com/summary.json",
-    ],
-    parser: "components",
-    components: ["Website", "API"],
-    probe: "https://www.perplexity.ai/",
+    feed: "https://status.perplexity.com/api/v2/summary.json",
+    samples: [],
+    parser: "statuspage_indicator",
+    probe: "https://api.perplexity.ai/chat/completions",
+    probe_ok: [401, 405],
+    probe_label: API_LABEL,
+    probe_words: "API server",
   },
   {
     id: "groq",
@@ -96,6 +112,9 @@ const SERVICES = [
     parser: "components",
     components: ["API", "Website"],
     probe: "https://console.groq.com/",
+    probe_ok: [],
+    probe_label: SITE_LABEL,
+    probe_words: "site",
   },
 ];
 
@@ -298,6 +317,10 @@ async function checkProbe(service) {
       discardBody(res);
       return { result: "fail", code, reason: "HTTP " + code, checkedAt, headers, peek: "" };
     }
+    if ((service.probe_ok || []).includes(code)) {
+      discardBody(res);
+      return { result: "ok", code, reason: "", checkedAt, headers, peek: "" };
+    }
     if (code >= 200 && code < 300) {
       const peek = await peekBody(res, PROBE_PEEK_CHARS);
       if (CHALLENGE_MARKERS.some((re) => re.test(peek))) {
@@ -360,25 +383,26 @@ async function postDiscord(webhook, content) {
   }
 }
 
-function probeWords(probe) {
-  if (probe === "reachable") return "site reachable";
-  if (probe === "unreachable") return "site unreachable";
-  return "site check unknown";
+function probeWords(service, probe) {
+  const what = service.probe_words || "site";
+  if (probe === "reachable") return what === "site" ? "site reachable" : "API server answering";
+  if (probe === "unreachable") return what === "site" ? "site unreachable" : "API server not answering";
+  return what + " check unknown";
 }
 
 function outageMessage(service, overall, probe, now) {
   return EMOJI.red + " **OUTAGE** " + service.name + ": official status says " +
-    LABELS[overall] + ". Our check: " + probeWords(probe) + ". " + humanTime(now) +
+    LABELS[overall] + ". Our check: " + probeWords(service, probe) + ". " + humanTime(now) +
     ". Official page: <" + service.status_page + ">";
 }
 
 function worseMessage(service, overall, probe, now) {
   return EMOJI.red + " **WORSE** " + service.name + ": now " + LABELS[overall] +
-    ". Our check: " + probeWords(probe) + ". " + humanTime(now) + ". <" + service.status_page + ">";
+    ". Our check: " + probeWords(service, probe) + ". " + humanTime(now) + ". <" + service.status_page + ">";
 }
 
 function checkMessage(service, now) {
-  return EMOJI.orange + " **CHECK** " + service.name + ": our site check failed " +
+  return EMOJI.orange + " **CHECK** " + service.name + ": our " + (service.probe_words || "site") + " check failed " +
     PROBE_FAILS_TO_CONFIRM + " times in a row, but the official status says Operational. " +
     humanTime(now) + ". <" + service.status_page + ">";
 }
@@ -574,7 +598,7 @@ async function runCheck(env) {
         note: officialNote,
       },
       probe: {
-        label: "Site reachable (HTTP 200)",
+        label: service.probe_label || SITE_LABEL,
         status: probeStatus,
         checked_at_utc: iso(probe.checkedAt),
         http_status: probe.code || null,
@@ -635,7 +659,7 @@ function unknownService(service, note) {
     status_page: service.status_page,
     overall: "unknown",
     official: { label: "Official status", status: "unknown", checked_at_utc: null, note },
-    probe: { label: "Site reachable (HTTP 200)", status: "unknown", checked_at_utc: null, http_status: null, note },
+    probe: { label: service.probe_label || SITE_LABEL, status: "unknown", checked_at_utc: null, http_status: null, note },
   };
 }
 

@@ -6,7 +6,9 @@ This folder is NOT public: Render only publishes `site/`.
 
 ## What it does
 
-- Reads each service's official status feed and checks that its website answers.
+- Reads each service's official status feed and runs our own check: the website for
+  Groq, the API server for OpenAI, Mistral and Perplexity (their websites block
+  automated checks with a Cloudflare challenge).
 - Saves everything in one KV key (`state:v1`), about 288 writes a day
   (free cap: 1,000 a day; going over fails, it does not bill).
 - Serves `/status.json` (board data, CORS limited to liveoutageradar.com) and
@@ -24,10 +26,12 @@ To approve after reviewing the samples, add a plain-text variable
 Ids: `openai`, `mistral`, `perplexity`, `groq`. Remove an id to send that
 service back to Unknown. To collect fresh samples, delete the `samples:v1` key.
 
-Proposed mappings (in `SERVICES` at the top of checker.js):
-- OpenAI, Mistral: page-wide indicator. none = Operational, minor = Degraded,
-  major = Partial outage, critical = Major outage.
-- Perplexity: worst of components Website and API.
+Mappings (in `SERVICES` at the top of checker.js), checked against the first
+live samples on Nov 4, 2026 (v1.1):
+- OpenAI, Mistral, Perplexity: page-wide indicator from `status.json` /
+  `summary.json`. none = Operational, minor = Degraded, major = Partial outage,
+  critical = Major outage. Mistral's feed covers its API platform, not Le Chat,
+  so the board calls it "Mistral".
 - Groq: worst of components API and Website (per-model components ignored).
 
 ## Status rules
@@ -35,6 +39,10 @@ Proposed mappings (in `SERVICES` at the top of checker.js):
 - Official Down shows immediately.
 - Our site check must fail 2 runs in a row (10 minutes) before it says Unreachable.
 - Site check 403, 429 or a challenge page = Unknown, never Down.
+- API checks: no key is sent, so the server answers 401 (Perplexity may answer
+  405). That counts as "API server answering". It proves the server is up,
+  not that the AI works, and the board label says exactly that.
+- Any other unexpected 4xx = Unknown.
 - Official Operational + site Unreachable = "Signals disagree".
 - Official Unknown = Unknown overall, whatever the site check says.
 - Data older than 15 minutes is served as Unknown, marked stale.
@@ -59,7 +67,7 @@ Example (generated from the real code):
 OUTAGE ChatGPT / OpenAI: official status says Partial outage. Our check: site reachable. 2026-11-04 14:00 UTC. Official page: <https://status.openai.com>
 RECOVERED ChatGPT / OpenAI: back to Operational after about 10 min. 2026-11-04 14:10 UTC. <https://status.openai.com>
 CHECK Groq: our site check failed 2 times in a row, but the official status says Operational. 2026-11-04 14:15 UTC. <https://groqstatus.com>
-FEED PROBLEM Mistral (Le Chat) official feed failed 3 checks in a row (returned HTML, not JSON). Showing Unknown. 2026-11-04 14:20 UTC. <https://status.mistral.ai/api/v2/status.json>
+FEED PROBLEM Mistral official feed failed 3 checks in a row (returned HTML, not JSON). Showing Unknown. 2026-11-04 14:20 UTC. <https://status.mistral.ai/api/v2/status.json>
 ```
 
 ## Deploy (Cloudflare dashboard, no installs needed)
