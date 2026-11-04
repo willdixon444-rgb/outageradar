@@ -8,6 +8,7 @@ Read this whole file before making any change. It applies to every AI agent work
 - **What is live right now:** a coming-soon placeholder page. `index.html` and `robots.txt` in the repo were edited by hand on GitHub. The page has a `noindex` meta tag, and `robots.txt` says `Disallow: /`, so search engines are asked to stay away until launch.
 - **The old starter pages** (stack.html, about.html, disclosure.html, privacy.html) still exist in the repo and can be opened by direct URL, but they are not linked from the placeholder and crawlers are blocked.
 - **The real status board does not exist yet.**
+- **Checker (Stage 2, built Nov 3, 2026):** `worker/checker.js` is a Cloudflare Worker (free plan, every 5 minutes) that writes board data to KV and serves it at `data.liveoutageradar.com/status.json` and `/health`. It starts in sample mode: every service shows Unknown until the owner lists it in the `APPROVED_MAPPINGS` variable. Read `worker/README.md` before changing it. Claude writes the checker code; other agents review only unless the owner says otherwise.
 - **Publish folder:** the live site is served from `site/`, not the repo root (Render Publish Directory = `site`). Anything outside `site/` (this file, build.py, PLAN.md, the old starter pages) is not public. `site/` holds only the placeholder `index.html`, `robots.txt` (Disallow) and a placeholder `404.html`.
 
 ## Launch gate: coming-soon placeholder (important)
@@ -71,6 +72,10 @@ robots.txt        search engine rules
 sitemap.xml       page list for search engines
 build.py          generates all the HTML pages above
 README.md         deploy steps
+worker/           status checker (Cloudflare Worker), NOT public
+  checker.js      the whole Worker; pasted into the Cloudflare dashboard
+  README.md       deploy steps, status rules, Discord messages
+  test/           local tests (npm test); fake feeds only
 ```
 
 ## Editing pages — important
@@ -141,11 +146,12 @@ Goal: the site runs itself, and the owner hears about problems in Discord instea
 
 ## Release checks (required before every push)
 
-1. Run `python3 -m py_compile` on every Python file.
-2. Confirm every Python file is ASCII-only (no smart quotes or special characters in the source).
-3. Run `python3 build.py` and confirm it finishes without errors.
-4. Open the generated pages and check them at phone width (about 390px) and on desktop.
-5. Only then commit and push. A push to `main` redeploys the live site.
+1. Run `python3 -m py_compile` on every Python file, and `node --check` on every JavaScript file.
+2. Confirm every Python and JavaScript file is ASCII-only (no smart quotes or special characters in the source).
+3. For `worker/`: run `npm test` inside `worker/` and confirm every test passes.
+4. Run `python3 build.py` and confirm it finishes without errors.
+5. Open the generated pages and check them at phone width (about 390px) and on desktop.
+6. Only then commit and push. A push to `main` redeploys the live site. The Worker does not deploy from GitHub: the owner pastes `worker/checker.js` into Cloudflare.
 
 **When something breaks:** follow Hypothesis, then Evaluation, then Action. State your hypothesis, show the evidence, propose the fix, and wait for the owner's approval before changing code.
 

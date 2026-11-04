@@ -1,0 +1,9 @@
+{
+  "name": "outageradar-checker",
+  "private": true,
+  "type": "module",
+  "description": "OutageRadar status checker (Cloudflare Worker). Not deployed by npm; paste checker.js into the Cloudflare dashboard.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
