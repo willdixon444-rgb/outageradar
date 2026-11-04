@@ -2,12 +2,12 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import worker from "../checker.js";
 import {
-  URLS, ALERTS_HOOK, HEALTH_HOOK, memoryKV, failingKV, json, html, statuspage,
-  components, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx,
+  URLS, ALL_IDS, ALERTS_HOOK, HEALTH_HOOK, memoryKV, failingKV, json, html, statuspage,
+  components, betterstack, rss, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx,
   runOnce, getStatus, svc,
 } from "./helpers.js";
 
-const ALL = "openai,mistral,perplexity,groq";
+const ALL = ALL_IDS.join(",");
 let clk, net, logs;
 
 function setup(overrides = {}) {
@@ -28,7 +28,7 @@ test("without approved mappings every service is published as unknown", async ()
   await runOnce(worker, env);
   const { res, body } = await getStatus(worker, env);
   assert.equal(res.status, 200);
-  assert.equal(body.services.length, 4);
+  assert.equal(body.services.length, 10);
   for (const s of body.services) {
     assert.equal(s.overall, "unknown", s.id);
     assert.equal(s.official.status, "unknown", s.id);
@@ -51,7 +51,9 @@ test("raw samples are saved once and announced once in the health channel", asyn
   const kv = memoryKV();
   const env = makeEnv(kv);
   await runOnce(worker, env);
-  const saved = JSON.parse(kv.store.get("samples:v1"));
+  const key = [...kv.store.keys()].find((k) => k.startsWith("samples:"));
+  assert.ok(key, "a samples key was saved");
+  const saved = JSON.parse(kv.store.get(key));
   assert.ok(saved.feeds.length >= 4);
   assert.ok(saved.feeds.some((f) => f.url === URLS.openai.feed && f.body.includes("indicator")));
   assert.ok(saved.probes.some((p) => p.service === "groq"));
@@ -523,4 +525,152 @@ test("webhook secrets never appear in public output, stored data or logs", async
   const everything = [await res.text(), await health.text(), ...kv.store.values(), ...logs.lines].join("\n");
   assert.doesNotMatch(everything, /SECRET/);
   assert.doesNotMatch(everything, /discord\.com\/api\/webhooks/);
+});
+
+
+// ---------- v1.2: more services, versioned samples, test alert ----------
+
+test("samples are saved under a versioned key even if an older sample exists", async () => {
+  setup();
+  const kv = memoryKV();
+  kv.store.set("samples:v1", JSON.stringify({ version: "1.1.0" }));
+  await runOnce(worker, makeEnv(kv));
+  const keys = [...kv.store.keys()].filter((k) => k.startsWith("samples:") && k !== "samples:v1");
+  assert.equal(keys.length, 1);
+  const saved = JSON.parse(kv.store.get(keys[0]));
+  assert.ok(saved.feeds.some((f) => f.service === "claude"));
+  assert.ok(saved.probes.some((p) => p.service === "gemini"));
+});
+
+test("new services stay unknown until approved", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: "openai,mistral,perplexity,groq" });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  for (const id of ["claude", "cohere", "huggingface", "xai", "gemini", "deepseek"]) {
+    assert.equal(svc(body, id).overall, "unknown", id);
+  }
+  assert.equal(svc(body, "openai").overall, "operational");
+});
+
+test("claude reads the statuspage indicator once approved", async () => {
+  setup({ [URLS.claude.feed]: () => json(statuspage("critical")) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "claude").name, "Claude");
+  assert.equal(svc(body, "claude").official.status, "major_outage");
+});
+
+test("hugging face reads the Better Stack aggregate state", async () => {
+  const cases = { operational: "operational", degraded: "degraded", downtime: "major_outage",
+    maintenance: "maintenance", "something-new": "unknown" };
+  for (const [state, expected] of Object.entries(cases)) {
+    if (net) net.restore();
+    setup({ [URLS.huggingface.feed]: () => json(betterstack(state)) });
+    const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+    await runOnce(worker, env);
+    const { body } = await getStatus(worker, env);
+    assert.equal(svc(body, "huggingface").official.status, expected, state);
+  }
+});
+
+test("services without a public feed never fetch one and say so", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
+  assert.ok(!net.calls.some((c) => c.url.includes("aistudio.google.com") || c.url.includes("status.deepseek.com")));
+  const { body } = await getStatus(worker, env);
+  for (const id of ["gemini", "deepseek"]) {
+    assert.equal(svc(body, id).official.status, "unknown", id);
+    assert.equal(svc(body, id).official.note, "No official public feed", id);
+    assert.equal(svc(body, id).overall, "unknown", id);
+  }
+  assert.equal(svc(body, "gemini").status_page, "https://aistudio.google.com/status");
+  assert.equal(health().filter((m) => m.includes("FEED PROBLEM")).length, 0);
+});
+
+test("gemini's API answering 403 counts as answering", async () => {
+  setup();
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "gemini").probe.status, "reachable");
+  assert.equal(svc(body, "gemini").probe.http_status, 403);
+});
+
+test("a 403 is still unknown for services that do not list it", async () => {
+  setup({ [URLS.claude.probe]: () => json({ error: "forbidden" }, 403) });
+  const env = makeEnv(memoryKV());
+  for (let i = 0; i < 3; i++) { await runOnce(worker, env); clk.advance(5); }
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "claude").probe.status, "unknown");
+});
+
+test("a challenge page is unknown even when its code is listed as answering", async () => {
+  setup({ [URLS.gemini.probe]: () => html("challenge", 403, { "cf-mitigated": "challenge" }) });
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "gemini").probe.status, "unknown");
+});
+
+test("xai RSS counts as a working feed but its status stays unknown even when approved", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "xai").official.status, "unknown");
+  assert.match(svc(body, "xai").official.note, /not mapped/i);
+  assert.equal(health().filter((m) => m.includes("FEED PROBLEM")).length, 0);
+});
+
+test("xai feed returning a web page instead of RSS is a feed problem", async () => {
+  setup({ [URLS.xai.feed]: () => html("<html>nope</html>") });
+  const env = makeEnv(memoryKV());
+  for (let i = 0; i < 3; i++) { await runOnce(worker, env); clk.advance(5); }
+  assert.equal(health().filter((m) => m.includes("FEED PROBLEM") && m.includes("xAI")).length, 1);
+});
+
+test("the test alert is sent once to the alerts channel", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { SEND_TEST_ALERT: "1" });
+  await runOnce(worker, env); clk.advance(5);
+  await runOnce(worker, env);
+  const tests = alerts().filter((m) => m.includes("TEST"));
+  assert.equal(tests.length, 1);
+  assert.match(tests[0], /alerts channel is working/);
+});
+
+test("changing the test alert value sends one more", async () => {
+  setup();
+  const kv = memoryKV();
+  await runOnce(worker, makeEnv(kv, { SEND_TEST_ALERT: "1" })); clk.advance(5);
+  await runOnce(worker, makeEnv(kv, { SEND_TEST_ALERT: "2" })); clk.advance(5);
+  await runOnce(worker, makeEnv(kv, { SEND_TEST_ALERT: "2" }));
+  assert.equal(alerts().filter((m) => m.includes("TEST")).length, 2);
+});
+
+test("no test alert without the switch", async () => {
+  setup();
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  assert.equal(alerts().filter((m) => m.includes("TEST")).length, 0);
+});
+
+test("a failed test alert is retried next run", async () => {
+  let up = false;
+  setup({ __discord: () => (up ? new Response(null, { status: 204 }) : new Response("no", { status: 500 })) });
+  const env = makeEnv(memoryKV(), { SEND_TEST_ALERT: "1" });
+  await runOnce(worker, env); clk.advance(5);
+  up = true;
+  await runOnce(worker, env);
+  assert.equal(alerts().filter((m) => m.includes("TEST")).length, 1);
+});
+
+test("a full run stays under the free-plan subrequest limit", async () => {
+  setup({ __discord: () => new Response(null, { status: 204 }) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL, SEND_TEST_ALERT: "1" });
+  await runOnce(worker, env);           // first run: also collects every sample
+  assert.ok(net.calls.length < 50, "subrequests: " + net.calls.length);
 });

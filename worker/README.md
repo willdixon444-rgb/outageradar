@@ -17,14 +17,16 @@ This folder is NOT public: Render only publishes `site/`.
 
 ## Sample mode (the default)
 
-Every service shows **Unknown** until its feed mapping is approved. On its
-first run the checker saves the raw feeds and site-check headers to the KV key
-`samples:v1` and posts "Samples saved" to the health channel.
+Every service shows **Unknown** until its feed mapping is approved. On the
+first run of each new version the checker saves the raw feeds and check
+headers to a versioned KV key (`samples:v1.2.0` for this version) and posts
+"Samples saved" to the health channel. Old `samples:v...` keys can be deleted.
 
 To approve after reviewing the samples, add a plain-text variable
 `APPROVED_MAPPINGS` with the service ids, for example `openai,groq`.
-Ids: `openai`, `mistral`, `perplexity`, `groq`. Remove an id to send that
-service back to Unknown. To collect fresh samples, delete the `samples:v1` key.
+Ids: `openai`, `mistral`, `perplexity`, `groq`, `claude`, `cohere`,
+`huggingface`, `xai`, `gemini`, `deepseek`. Remove an id to send that service
+back to Unknown. To collect fresh samples, delete the current `samples:v...` key.
 
 Mappings (in `SERVICES` at the top of checker.js), checked against the first
 live samples on Nov 4, 2026 (v1.1):
@@ -33,6 +35,17 @@ live samples on Nov 4, 2026 (v1.1):
   critical = Major outage. Mistral's feed covers its API platform, not Le Chat,
   so the board calls it "Mistral".
 - Groq: worst of components API and Website (per-model components ignored).
+
+Added in v1.2 (sample mode until reviewed):
+- Claude: page-wide indicator from `status.claude.com/api/v2/summary.json`.
+- Cohere: assumed Statuspage indicator (UNVERIFIED until sampled).
+- Hugging Face: Better Stack `aggregate_state` from `/index.json`
+  (UNVERIFIED until sampled). downtime = Major outage.
+- Grok / xAI: official RSS feed. It lists incidents, not a current status, so
+  xAI stays Unknown even when approved, until a reliable mapping exists.
+- Gemini, DeepSeek: no official public feed. Official status is always
+  "No official public feed"; the board shows our API check beside it.
+  Gemini's API may answer 403 without a key, which counts as answering.
 
 ## Status rules
 
@@ -56,8 +69,12 @@ Alerts channel (only for approved services; 30-minute cooldown between alerts):
 - RECOVERED: back to Operational. Never sent while the status is Unknown.
 - Degraded alone does not alert.
 
+Test alert: add a plain-text variable `SEND_TEST_ALERT` (any value, e.g. `1`).
+The next run posts one TEST message to the alerts channel. Change the value
+to send another; remove the variable when done.
+
 Health channel:
-- Samples saved (once).
+- Samples saved (once per version).
 - FEED PROBLEM after 3 failed feed checks in a row; FEED OK when it works again.
 - CHECKER could not read/save state (at most once an hour).
 

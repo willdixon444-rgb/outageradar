@@ -18,7 +18,35 @@ export const URLS = {
     feed: "https://groqstatus.com/api/v2/components.json",
     probe: "https://console.groq.com/",
   },
+  claude: {
+    feed: "https://status.claude.com/api/v2/summary.json",
+    probe: "https://api.anthropic.com/v1/models",
+  },
+  cohere: {
+    feed: "https://status.cohere.com/api/v2/summary.json",
+    probe: "https://api.cohere.com/v1/models",
+  },
+  huggingface: {
+    feed: "https://status.huggingface.co/index.json",
+    probe: "https://huggingface.co/api/whoami-v2",
+  },
+  xai: {
+    feed: "https://status.x.ai/feed.xml",
+    probe: "https://api.x.ai/v1/models",
+  },
+  gemini: {
+    feed: null,
+    page: "https://aistudio.google.com/status",
+    probe: "https://generativelanguage.googleapis.com/v1beta/models",
+  },
+  deepseek: {
+    feed: null,
+    page: "https://status.deepseek.com",
+    probe: "https://api.deepseek.com/models",
+  },
 };
+
+export const ALL_IDS = Object.keys(URLS);
 
 export const ALERTS_HOOK = "https://discord.com/api/webhooks/111/ALERTS-SECRET-abc";
 export const HEALTH_HOOK = "https://discord.com/api/webhooks/222/HEALTH-SECRET-xyz";
@@ -72,6 +100,20 @@ export const statuspage = (indicator) => ({
 
 export const components = (list) => ({ components: list });
 
+export const betterstack = (state) => ({
+  data: { id: "1", type: "status_page", attributes: { company_name: "X", aggregate_state: state } },
+  included: [],
+});
+
+export function rss(items = []) {
+  return new Response(
+    '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Status</title>' +
+      items.map((t) => "<item><title>" + t + "</title></item>").join("") +
+      "</channel></rss>",
+    { status: 200, headers: { "content-type": "application/rss+xml" } },
+  );
+}
+
 // Default healthy world. Tests override single URLs via `routes`.
 export function healthyRoutes() {
   const unauthorized = () => json({ error: { message: "missing api key" } }, 401);
@@ -85,6 +127,16 @@ export function healthyRoutes() {
     [URLS.mistral.probe]: unauthorized,
     [URLS.perplexity.probe]: unauthorized,
     [URLS.groq.probe]: () => html("<html><title>GroqCloud</title></html>"),
+    [URLS.claude.feed]: () => json(statuspage("none")),
+    [URLS.cohere.feed]: () => json(statuspage("none")),
+    [URLS.huggingface.feed]: () => json(betterstack("operational")),
+    [URLS.xai.feed]: () => rss(["Resolved: earlier issue"]),
+    [URLS.claude.probe]: unauthorized,
+    [URLS.cohere.probe]: unauthorized,
+    [URLS.huggingface.probe]: unauthorized,
+    [URLS.xai.probe]: unauthorized,
+    [URLS.gemini.probe]: () => json({ error: { code: 403, status: "PERMISSION_DENIED" } }, 403),
+    [URLS.deepseek.probe]: unauthorized,
   };
 }
 

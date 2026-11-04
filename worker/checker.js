@@ -24,14 +24,18 @@
 //   DISCORD_ALERTS_WEBHOOK  secret, outage channel
 //   DISCORD_HEALTH_WEBHOOK  secret, health channel
 //   APPROVED_MAPPINGS       plain text variable, optional, comma list
+//   SEND_TEST_ALERT         plain text variable, optional. Any value sends one
+//                           TEST message to the alerts channel; change the
+//                           value to send another. Remove it when done.
 //
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 const STATE_KEY = "state:v1";
-const SAMPLES_KEY = "samples:v1";
+// Versioned so every release collects fresh samples on its first run.
+const SAMPLES_KEY = "samples:v" + VERSION;
 
 const MIN = 60 * 1000;
 const STALE_AFTER_MS = 15 * MIN;
@@ -116,7 +120,92 @@ const SERVICES = [
     probe_label: SITE_LABEL,
     probe_words: "site",
   },
+  // ---- Added in v1.2. Sample mode until reviewed (not in APPROVED_MAPPINGS). ----
+  {
+    // Feed documented on status.claude.com/api (Statuspage format).
+    id: "claude",
+    name: "Claude",
+    status_page: "https://status.claude.com",
+    feed: "https://status.claude.com/api/v2/summary.json",
+    samples: [],
+    parser: "statuspage_indicator",
+    probe: "https://api.anthropic.com/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // UNVERIFIED feed URL: assumed Statuspage format; the first sample decides.
+    id: "cohere",
+    name: "Cohere",
+    status_page: "https://status.cohere.com",
+    feed: "https://status.cohere.com/api/v2/summary.json",
+    samples: ["https://status.cohere.com/api/v2/status.json"],
+    parser: "statuspage_indicator",
+    probe: "https://api.cohere.com/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // UNVERIFIED: the page offers "the entire status page as JSON"
+    // (Better Stack style); the first sample decides.
+    id: "huggingface",
+    name: "Hugging Face",
+    status_page: "https://status.huggingface.co",
+    feed: "https://status.huggingface.co/index.json",
+    samples: ["https://status.huggingface.co/api/v2/summary.json"],
+    parser: "betterstack",
+    probe: "https://huggingface.co/api/whoami-v2",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // xAI's own docs point to this RSS feed. RSS lists incidents, not a
+    // current status, so the board shows Unknown for xAI until a reliable
+    // mapping is approved. The JSON candidate is from an unofficial app.
+    id: "xai",
+    name: "Grok / xAI",
+    status_page: "https://status.x.ai",
+    feed: "https://status.x.ai/feed.xml",
+    samples: ["https://data.x.ai/status/summary.json"],
+    parser: "rss_check",
+    probe: "https://api.x.ai/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // No public machine-readable feed for AI Studio / Gemini API.
+    // Google's API may answer 403 (not 401) without a key; the sample decides.
+    id: "gemini",
+    name: "Gemini",
+    status_page: "https://aistudio.google.com/status",
+    feed: null,
+    samples: [],
+    parser: "none",
+    probe: "https://generativelanguage.googleapis.com/v1beta/models",
+    probe_ok: [401, 403],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // Status page runs on a provider with no standard public feed.
+    id: "deepseek",
+    name: "DeepSeek",
+    status_page: "https://status.deepseek.com",
+    feed: null,
+    samples: [],
+    parser: "none",
+    probe: "https://api.deepseek.com/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
 ];
+
+const NO_FEED_NOTE = "No official public feed";
 
 // ---------- Status words ----------
 // Official: operational, degraded, partial_outage, major_outage,
@@ -150,6 +239,13 @@ const COMPONENT_MAP = {
   partialoutage: "partial_outage",
   majoroutage: "major_outage",
   undermaintenance: "maintenance",
+  maintenance: "maintenance",
+};
+
+const BETTERSTACK_MAP = {
+  operational: "operational",
+  degraded: "degraded",
+  downtime: "major_outage",
   maintenance: "maintenance",
 };
 
@@ -231,6 +327,12 @@ function describeError(err) {
 
 function parseFeed(service, text, contentType) {
   // Returns { ok, status, reason }. ok=false means the feed is broken.
+  if (service.parser === "rss_check") {
+    const head = text.slice(0, 2000);
+    const isFeed = /<rss[\s>]/i.test(head) || /<feed[\s>]/i.test(head);
+    if (!isFeed) return { ok: false, status: "unknown", reason: "not an RSS feed" };
+    return { ok: true, status: "unknown", reason: "RSS feed read; current status not mapped yet" };
+  }
   let data;
   try {
     data = JSON.parse(text);
@@ -267,11 +369,23 @@ function parseFeed(service, text, contentType) {
     return { ok: true, status: worst, reason: "" };
   }
 
+  if (service.parser === "betterstack") {
+    const attrs = data.data && data.data.attributes;
+    const state = attrs && attrs.aggregate_state;
+    if (typeof state !== "string") return { ok: false, status: "unknown", reason: "no aggregate state" };
+    const mapped = BETTERSTACK_MAP[state.toLowerCase()];
+    return { ok: true, status: mapped || "unknown", reason: mapped ? "" : "unrecognised state" };
+  }
+
   return { ok: false, status: "unknown", reason: "no parser" };
 }
 
 async function checkFeed(service) {
   const checkedAt = Date.now();
+  if (!service.feed) {
+    // Nothing to fetch. Not a broken feed, so no feed alerts.
+    return { ok: true, status: "unknown", reason: NO_FEED_NOTE, checkedAt };
+  }
   try {
     const res = await fetchWithTimeout(service.feed, {
       headers: { "user-agent": USER_AGENT, accept: "application/json" },
@@ -309,6 +423,10 @@ async function checkProbe(service) {
       discardBody(res);
       return { result: "blocked", code, reason: "challenge page", checkedAt, headers, peek: "" };
     }
+    if ((service.probe_ok || []).includes(code)) {
+      discardBody(res);
+      return { result: "ok", code, reason: "", checkedAt, headers, peek: "" };
+    }
     if (code === 403 || code === 429) {
       discardBody(res);
       return { result: "blocked", code, reason: "blocked (HTTP " + code + ")", checkedAt, headers, peek: "" };
@@ -316,10 +434,6 @@ async function checkProbe(service) {
     if (code >= 500) {
       discardBody(res);
       return { result: "fail", code, reason: "HTTP " + code, checkedAt, headers, peek: "" };
-    }
-    if ((service.probe_ok || []).includes(code)) {
-      discardBody(res);
-      return { result: "ok", code, reason: "", checkedAt, headers, peek: "" };
     }
     if (code >= 200 && code < 300) {
       const peek = await peekBody(res, PROBE_PEEK_CHARS);
@@ -363,6 +477,7 @@ const EMOJI = {
   green: "\u{1F7E2}",
   tool: "\u{1F6E0}\u{FE0F}",
   sample: "\u{1F9EA}",
+  bell: "\u{1F514}",
 };
 
 async function postDiscord(webhook, content) {
@@ -430,7 +545,7 @@ function isTopOfHour(ms) {
 async function collectSamples(probes) {
   const urls = [];
   for (const s of SERVICES) {
-    urls.push({ service: s.id, url: s.feed });
+    if (s.feed) urls.push({ service: s.id, url: s.feed });
     for (const u of s.samples || []) urls.push({ service: s.id, url: u });
   }
   const feeds = await Promise.all(urls.map(async (item) => {
@@ -500,6 +615,14 @@ async function runCheck(env) {
     console.warn("sample collection failed; will retry next run");
   }
 
+  // Optional one-time test of the alerts channel.
+  const testToken = env.SEND_TEST_ALERT ? String(env.SEND_TEST_ALERT) : "";
+  if (testToken && state.test_alert_token !== testToken) {
+    const sent = await postDiscord(env.DISCORD_ALERTS_WEBHOOK, EMOJI.bell + " **TEST** OutageRadar " +
+      "alerts channel is working. No action needed. " + humanTime(Date.now()));
+    if (sent) state.test_alert_token = testToken;
+  }
+
   const now = Date.now();
   const publicServices = [];
 
@@ -513,7 +636,8 @@ async function runCheck(env) {
     // Official signal.
     const official = isApproved && feed.ok ? feed.status : "unknown";
     let officialNote = "";
-    if (!isApproved) officialNote = "Mapping not approved yet";
+    if (!service.feed) officialNote = NO_FEED_NOTE;
+    else if (!isApproved) officialNote = "Mapping not approved yet";
     else if (!feed.ok) officialNote = "Feed problem: " + feed.reason;
     else if (feed.reason) officialNote = feed.reason;
 
