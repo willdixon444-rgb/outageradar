@@ -1,7 +1,3 @@
-# TEMPORARY: the site is not launched yet, so ask search engines to stay away.
-# At launch, replace this file with:
-#   User-agent: *
-#   Allow: /
-#   Sitemap: https://liveoutageradar.com/sitemap.xml
 User-agent: *
-Disallow: /
+Allow: /
+Sitemap: https://liveoutageradar.com/sitemap.xml

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   SHELL, badgeFor, buildView, sortServices, pollDecision, contrastRatio,
   COLORS, describeOfficial, describeProbe, summaryLine, blipFor, liveState,
-} from "../site/preview/board.js";
+} from "../site/board.js";
 
 function svc(id, overall, extra = {}) {
   const feedless = id === "gemini" || id === "deepseek";
@@ -247,7 +247,7 @@ test("only the live state pulses", () => {
 
 // ---------- page markup ----------
 import { readFileSync } from "node:fs";
-const PAGE = readFileSync(new URL("../site/preview/index.html", import.meta.url), "utf8");
+const PAGE = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
 
 test("the TokenMargin partner link is on the page", () => {
   assert.match(PAGE, /href="https:\/\/tokenmargin\.dev\/?"/);
@@ -259,16 +259,17 @@ test("every link that opens a new tab is protected with rel=noopener", () => {
   for (const t of tags) assert.match(t, /rel="[^"]*noopener[^"]*"/, t);
 });
 
-test("the preview stays hidden from search engines", () => {
-  assert.match(PAGE, /<meta name="robots" content="noindex, nofollow">/);
+test("the launched homepage is open to search engines", () => {
+  assert.doesNotMatch(PAGE, /noindex/);
+  assert.match(PAGE, /<link rel="canonical" href="https:\/\/liveoutageradar\.com\/">/);
 });
 
 // ---------- privacy page (and the promises it makes) ----------
 const PRIVACY_PATH = new URL("../site/privacy.html", import.meta.url);
 
-test("the privacy page exists, is hidden pre-launch, and names the contact address", () => {
+test("the privacy page exists, is indexable, and names the contact address", () => {
   const p = readFileSync(PRIVACY_PATH, "utf8");
-  assert.match(p, /<meta name="robots" content="noindex, nofollow">/);
+  assert.doesNotMatch(p, /noindex/);
   assert.match(p, /contact@liveoutageradar\.com/);
   assert.match(p, /no cookies/i);
   assert.match(p, /Render/);
@@ -281,11 +282,53 @@ test("the board links to the privacy page", () => {
 });
 
 test("the board really stores nothing in the browser (the privacy page promises this)", () => {
-  const js = readFileSync(new URL("../site/preview/board.js", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../site/board.js", import.meta.url), "utf8");
   assert.doesNotMatch(js, /localStorage|sessionStorage|indexedDB|document\.cookie/);
 });
 
 test("the board loads no third-party scripts, fonts or images", () => {
-  const external = PAGE.match(/<(script|link|img)\b[^>]*(src|href)="https?:\/\/[^"]+"/g) || [];
+  const external = (PAGE.match(/<(script|link|img)\b[^>]*(src|href)="https?:\/\/[^"]+"/g) || [])
+    .filter((tag) => !/(src|href)="https:\/\/liveoutageradar\.com\//.test(tag));
   assert.deepEqual(external, []);
+});
+
+
+// ---------- launch (Nov 5, 2026) ----------
+const SITE = (f) => readFileSync(new URL("../site/" + f, import.meta.url), "utf8");
+
+test("robots.txt allows crawling and points to the sitemap", () => {
+  const r = SITE("robots.txt");
+  assert.doesNotMatch(r, /Disallow:\s*\/\s*$/m);
+  assert.match(r, /Allow: \//);
+  assert.match(r, /Sitemap: https:\/\/liveoutageradar\.com\/sitemap\.xml/);
+});
+
+test("the sitemap lists the homepage and the privacy page", () => {
+  const m = SITE("sitemap.xml");
+  assert.match(m, /<loc>https:\/\/liveoutageradar\.com\/<\/loc>/);
+  assert.match(m, /<loc>https:\/\/liveoutageradar\.com\/privacy\.html<\/loc>/);
+});
+
+test("the homepage has a link-preview card for social sites", () => {
+  assert.match(PAGE, /<meta property="og:title" content="[^"]+">/);
+  assert.match(PAGE, /<meta property="og:image" content="https:\/\/liveoutageradar\.com\/og\.png">/);
+  assert.match(PAGE, /<meta name="twitter:card" content="summary_large_image">/);
+  const png = readFileSync(new URL("../site/og.png", import.meta.url));
+  assert.equal(png.subarray(1, 4).toString(), "PNG");
+  assert.equal(png.readUInt32BE(16), 1200);
+  assert.equal(png.readUInt32BE(20), 630);
+});
+
+test("the old preview address forwards to the homepage and is not indexed", () => {
+  const p = SITE("preview/index.html");
+  assert.match(p, /http-equiv="refresh" content="0; url=\/"/);
+  assert.match(p, /noindex/);
+});
+
+test("the homepage loads the board script from the site root", () => {
+  assert.match(PAGE, /<script type="module" src="\/board\.js"><\/script>/);
+});
+
+test("the not-found page stays out of search results", () => {
+  assert.match(SITE("404.html"), /noindex/);
 });
