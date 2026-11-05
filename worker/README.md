@@ -11,7 +11,9 @@ This folder is NOT public: Render only publishes `site/`.
   automated checks with a Cloudflare challenge).
 - Saves everything in one KV key (`state:v1`), about 288 writes a day
   (free cap: 1,000 a day; going over fails, it does not bill).
-- Serves `/status.json` (board data, CORS limited to liveoutageradar.com) and
+- Serves `/status.json` (board data, CORS limited to liveoutageradar.com; since
+  v1.4 it includes `served_at_utc` and `age_seconds` from the server clock so the
+  board never trusts a visitor's clock) and
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
@@ -19,7 +21,7 @@ This folder is NOT public: Render only publishes `site/`.
 
 Every service shows **Unknown** until its feed mapping is approved. On the
 first run of each new version the checker saves the raw feeds and check
-headers to a versioned KV key (`samples:v1.3.0` for this version) and posts
+headers to a versioned KV key (`samples:v1.4.0` for this version) and posts
 "Samples saved" to the health channel. Old `samples:v...` keys can be deleted.
 
 To approve after reviewing the samples, add a plain-text variable

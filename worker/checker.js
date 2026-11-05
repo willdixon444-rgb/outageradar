@@ -31,7 +31,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -808,15 +808,21 @@ function buildPublic(state, now) {
   const pub = state && state.public;
   const fresh = pub && typeof pub.generated_at_ms === "number" &&
     now - pub.generated_at_ms <= STALE_AFTER_MS && pub.generated_at_ms <= now + MIN;
+  // served_at_utc and age_seconds come from the server's clock, so the board
+  // can judge freshness without trusting the visitor's computer clock.
+  const ageSeconds = pub && typeof pub.generated_at_ms === "number"
+    ? Math.max(0, Math.round((now - pub.generated_at_ms) / 1000)) : null;
   if (fresh) {
     const { generated_at_ms, ...rest } = pub;
-    return rest;
+    return { ...rest, served_at_utc: iso(now), age_seconds: ageSeconds };
   }
   // Too old or missing: everything unknown, with the last real time if we have one.
   const note = pub ? "Data is stale" : "No data yet";
   return {
     schema: 1,
     generated_at_utc: pub ? pub.generated_at_utc : null,
+    served_at_utc: iso(now),
+    age_seconds: ageSeconds,
     stale: true,
     services: SERVICES.map((s) => unknownService(s, note)),
   };

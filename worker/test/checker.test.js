@@ -757,3 +757,34 @@ test("a full run stays under the free-plan subrequest limit", async () => {
   await runOnce(worker, env);           // first run: also collects every sample
   assert.ok(net.calls.length < 50, "subrequests: " + net.calls.length);
 });
+
+// ---------- v1.4: server-side time so the board never trusts the visitor's clock ----------
+
+test("status.json carries the server time and the data age in seconds", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  clk.advance(3);
+  const { body } = await getStatus(worker, env);
+  assert.match(body.served_at_utc, /Z$/);
+  assert.equal(body.age_seconds, 180);
+  assert.equal(body.stale, false);
+});
+
+test("stale status.json still reports its real age", async () => {
+  setup();
+  const env = makeEnv(memoryKV());
+  await runOnce(worker, env);
+  clk.advance(20);
+  const { body } = await getStatus(worker, env);
+  assert.equal(body.stale, true);
+  assert.equal(body.age_seconds, 1200);
+  assert.match(body.served_at_utc, /Z$/);
+});
+
+test("status.json before any run has no age", async () => {
+  setup();
+  const { body } = await getStatus(worker, makeEnv(memoryKV()));
+  assert.equal(body.age_seconds, null);
+  assert.match(body.served_at_utc, /Z$/);
+});

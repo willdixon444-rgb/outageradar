@@ -1,0 +1,7 @@
+{
+  "name": "outageradar-board-tests",
+  "private": true,
+  "type": "module",
+  "description": "Tests for site/preview/board.js display logic. Not deployed.",
+  "scripts": { "test": "node --test *.test.js" }
+}
