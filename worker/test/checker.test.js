@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import worker from "../checker.js";
 import {
   URLS, ALL_IDS, ALERTS_HOOK, HEALTH_HOOK, memoryKV, failingKV, json, html, statuspage,
-  components, betterstack, rss, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx,
+  components, betterstack, rss, xaiSummary, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx,
   runOnce, getStatus, svc,
 } from "./helpers.js";
 
@@ -584,7 +584,7 @@ test("services without a public feed never fetch one and say so", async () => {
   for (const id of ["gemini", "deepseek"]) {
     assert.equal(svc(body, id).official.status, "unknown", id);
     assert.equal(svc(body, id).official.note, "No official public feed", id);
-    assert.equal(svc(body, id).overall, "unknown", id);
+    assert.equal(svc(body, id).overall, "check_ok", id);
   }
   assert.equal(svc(body, "gemini").status_page, "https://aistudio.google.com/status");
   assert.equal(health().filter((m) => m.includes("FEED PROBLEM")).length, 0);
@@ -615,21 +615,104 @@ test("a challenge page is unknown even when its code is listed as answering", as
   assert.equal(svc(body, "gemini").probe.status, "unknown");
 });
 
-test("xai RSS counts as a working feed but its status stays unknown even when approved", async () => {
-  setup();
+test("xai reads only the Grok components of its JSON summary once approved", async () => {
+  setup({ [URLS.xai.feed]: () => json(xaiSummary({ "cursor.com": "major_outage" })) });
   const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
-  for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
+  await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
-  assert.equal(svc(body, "xai").official.status, "unknown");
-  assert.match(svc(body, "xai").official.note, /not mapped/i);
-  assert.equal(health().filter((m) => m.includes("FEED PROBLEM")).length, 0);
+  assert.equal(svc(body, "xai").official.status, "operational");
+  assert.equal(svc(body, "xai").overall, "operational");
 });
 
-test("xai feed returning a web page instead of RSS is a feed problem", async () => {
+test("xai status words we have not seen yet are unknown, never a guess", async () => {
+  setup({ [URLS.xai.feed]: () => json(xaiSummary({ "grok.com": "degraded" })) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "xai").official.status, "unknown");
+  assert.equal(svc(body, "xai").overall, "unknown");
+});
+
+test("xai stays unknown until approved", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: "openai" });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "xai").overall, "unknown");
+});
+
+test("xai feed returning a web page instead of JSON is a feed problem", async () => {
   setup({ [URLS.xai.feed]: () => html("<html>nope</html>") });
   const env = makeEnv(memoryKV());
   for (let i = 0; i < 3; i++) { await runOnce(worker, env); clk.advance(5); }
   assert.equal(health().filter((m) => m.includes("FEED PROBLEM") && m.includes("xAI")).length, 1);
+});
+
+test("no-feed services are check-only up when approved and answering", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "gemini").overall, "check_ok");
+  assert.equal(svc(body, "deepseek").overall, "check_ok");
+});
+
+test("no-feed services stay unknown when not approved", async () => {
+  setup();
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: "openai" });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "gemini").overall, "unknown");
+});
+
+test("a single failed check on a no-feed service is unknown, not down", async () => {
+  setup({ [URLS.deepseek.probe]: () => html("bad gateway", 502) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "deepseek").overall, "unknown");
+  assert.equal(alerts().filter((m) => m.includes("DeepSeek")).length, 0);
+});
+
+test("a no-feed service failing two checks alerts once and recovers once", async () => {
+  let down = true;
+  setup({ [URLS.deepseek.probe]: () => (down ? html("bad gateway", 502) : json({}, 401)) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env); clk.advance(5);
+  await runOnce(worker, env); clk.advance(5);
+  await runOnce(worker, env); clk.advance(5);
+  let { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "deepseek").overall, "check_failed");
+  const starts = alerts().filter((m) => m.includes("DeepSeek"));
+  assert.equal(starts.length, 1);
+  assert.match(starts[0], /CHECK/);
+  assert.match(starts[0], /no official status feed/i);
+  assert.doesNotMatch(starts[0], /OUTAGE/);
+  down = false;
+  await runOnce(worker, env);
+  clk.advance(1);   // past the 30-second read cache on /status.json
+  ({ body } = await getStatus(worker, env));
+  assert.equal(svc(body, "deepseek").overall, "check_ok");
+  const rec = alerts().filter((m) => m.includes("DeepSeek") && m.includes("RECOVERED"));
+  assert.equal(rec.length, 1);
+  assert.match(rec[0], /answering again/);
+});
+
+test("a blocked check on a no-feed service never alerts", async () => {
+  setup({ [URLS.deepseek.probe]: () => html("blocked", 403) });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "deepseek").overall, "unknown");
+  assert.equal(alerts().filter((m) => m.includes("DeepSeek")).length, 0);
+});
+
+test("services with a feed never use the check-only states", async () => {
+  setup({ [URLS.openai.feed]: () => html("<html>nope</html>") });
+  const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
+  await runOnce(worker, env);
+  const { body } = await getStatus(worker, env);
+  assert.equal(svc(body, "openai").overall, "unknown");
 });
 
 test("the test alert is sent once to the alerts channel", async () => {

@@ -31,7 +31,7 @@ export const URLS = {
     probe: "https://huggingface.co/api/whoami-v2",
   },
   xai: {
-    feed: "https://status.x.ai/feed.xml",
+    feed: "https://data.x.ai/status/summary.json",
     probe: "https://api.x.ai/v1/models",
   },
   gemini: {
@@ -105,6 +105,16 @@ export const betterstack = (state) => ({
   included: [],
 });
 
+export function xaiSummary(over = {}) {
+  const base = { "Global (api.x.ai)": "available", "grok.com": "available", "cursor.com": "available" };
+  const merged = { ...base, ...over };
+  return {
+    status: { indicator: "none", description: "All systems operational" },
+    components: Object.entries(merged).map(([name, status]) => ({ id: name, name, status })),
+    incidents: [],
+  };
+}
+
 export function rss(items = []) {
   return new Response(
     '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Status</title>' +
@@ -130,7 +140,7 @@ export function healthyRoutes() {
     [URLS.claude.feed]: () => json(statuspage("none")),
     [URLS.cohere.feed]: () => json(statuspage("none")),
     [URLS.huggingface.feed]: () => json(betterstack("operational")),
-    [URLS.xai.feed]: () => rss(["Resolved: earlier issue"]),
+    [URLS.xai.feed]: () => json(xaiSummary()),
     [URLS.claude.probe]: unauthorized,
     [URLS.cohere.probe]: unauthorized,
     [URLS.huggingface.probe]: unauthorized,

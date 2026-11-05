@@ -31,7 +31,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -162,15 +162,17 @@ const SERVICES = [
     probe_words: "API server",
   },
   {
-    // xAI's own docs point to this RSS feed. RSS lists incidents, not a
-    // current status, so the board shows Unknown for xAI until a reliable
-    // mapping is approved. The JSON candidate is from an unofficial app.
+    // v1.3: JSON summary on xAI's own data.x.ai domain (sampled Nov 4, 2026;
+    // not in xAI's docs). It also lists Cursor products, so only the Grok
+    // components below count. The RSS feed (status.x.ai/feed.xml) was 340 KB
+    // of mostly Cursor history and could not give a current status.
     id: "xai",
     name: "Grok / xAI",
     status_page: "https://status.x.ai",
-    feed: "https://status.x.ai/feed.xml",
-    samples: ["https://data.x.ai/status/summary.json"],
-    parser: "rss_check",
+    feed: "https://data.x.ai/status/summary.json",
+    samples: [],
+    parser: "components",
+    components: ["Global (api.x.ai)", "grok.com"],
     probe: "https://api.x.ai/v1/models",
     probe_ok: [401],
     probe_label: API_LABEL,
@@ -211,7 +213,10 @@ const NO_FEED_NOTE = "No official public feed";
 // Official: operational, degraded, partial_outage, major_outage,
 //           maintenance, unknown
 // Probe:    reachable, unreachable, unknown
-// Overall:  official word, or signals_disagree, or unknown
+// Overall:  official word, or signals_disagree, or unknown.
+//           Services with no official feed (Gemini, DeepSeek) use our check
+//           only: check_ok / check_failed / unknown. The board must label
+//           these as "our check only"; they never show as Operational.
 
 const SEVERITY = {
   operational: 0,
@@ -221,7 +226,8 @@ const SEVERITY = {
   major_outage: 4,
 };
 
-const ALERT_STATES = ["partial_outage", "major_outage", "signals_disagree"];
+const ALERT_STATES = ["partial_outage", "major_outage", "signals_disagree", "check_failed"];
+const GOOD_STATES = ["operational", "check_ok"];
 
 const INDICATOR_MAP = {
   none: "operational",
@@ -235,6 +241,7 @@ const INDICATOR_MAP = {
 // ("partial_outage") and Instatus ("PARTIALOUTAGE") spellings match.
 const COMPONENT_MAP = {
   operational: "operational",
+  available: "operational", // xAI's word for up; any other xAI word stays unknown
   degradedperformance: "degraded",
   partialoutage: "partial_outage",
   majoroutage: "major_outage",
@@ -256,6 +263,8 @@ const LABELS = {
   major_outage: "Major outage",
   maintenance: "Maintenance",
   signals_disagree: "Signals disagree",
+  check_ok: "Up (our check only)",
+  check_failed: "Not answering (our check only)",
   unknown: "Unknown",
   reachable: "Reachable",
   unreachable: "Unreachable",
@@ -327,12 +336,6 @@ function describeError(err) {
 
 function parseFeed(service, text, contentType) {
   // Returns { ok, status, reason }. ok=false means the feed is broken.
-  if (service.parser === "rss_check") {
-    const head = text.slice(0, 2000);
-    const isFeed = /<rss[\s>]/i.test(head) || /<feed[\s>]/i.test(head);
-    if (!isFeed) return { ok: false, status: "unknown", reason: "not an RSS feed" };
-    return { ok: true, status: "unknown", reason: "RSS feed read; current status not mapped yet" };
-  }
   let data;
   try {
     data = JSON.parse(text);
@@ -451,7 +454,13 @@ async function checkProbe(service) {
 
 // ---------- Combining signals ----------
 
-function combine(official, probe) {
+function combine(official, probe, hasFeed) {
+  if (!hasFeed) {
+    // No official feed exists: report our own check, clearly marked as such.
+    if (probe === "reachable") return "check_ok";
+    if (probe === "unreachable") return "check_failed";
+    return "unknown";
+  }
   if (official === "unknown") return "unknown";
   if (official !== "operational") return official;
   return probe === "unreachable" ? "signals_disagree" : "operational";
@@ -522,9 +531,16 @@ function checkMessage(service, now) {
     humanTime(now) + ". <" + service.status_page + ">";
 }
 
+function checkOnlyMessage(service, now) {
+  return EMOJI.orange + " **CHECK** " + service.name + ": our " + (service.probe_words || "site") +
+    " check failed " + PROBE_FAILS_TO_CONFIRM + " times in a row. " + service.name +
+    " has no official status feed to confirm. " + humanTime(now) + ". <" + service.status_page + ">";
+}
+
 function recoveredMessage(service, openedMs, now) {
   const mins = openedMs ? minutesBetween(openedMs, now) : null;
-  return EMOJI.green + " **RECOVERED** " + service.name + ": back to Operational" +
+  const back = service.feed ? "back to Operational" : "our check is answering again";
+  return EMOJI.green + " **RECOVERED** " + service.name + ": " + back +
     (mins !== null ? " after about " + mins + " min" : "") + ". " + humanTime(now) +
     ". <" + service.status_page + ">";
 }
@@ -671,15 +687,16 @@ async function runCheck(env) {
       probeStatus = "unknown";
     }
 
-    const overall = combine(official, probeStatus);
+    // Check-only states need the service approved like everything else.
+    const overall = isApproved || service.feed ? combine(official, probeStatus, !!service.feed) : "unknown";
 
     // Outage alerts (alerts channel). Only approved services can alert.
     if (isApproved) {
       const bad = ALERT_STATES.includes(overall);
       const coolingDown = st.last_alert_ms !== null && now - st.last_alert_ms < ALERT_COOLDOWN_MS;
       if (bad && !st.alert_open && !coolingDown) {
-        const msg = overall === "signals_disagree"
-          ? checkMessage(service, now)
+        const msg = overall === "signals_disagree" ? checkMessage(service, now)
+          : overall === "check_failed" ? checkOnlyMessage(service, now)
           : outageMessage(service, overall, probeStatus, now);
         if (await postDiscord(env.DISCORD_ALERTS_WEBHOOK, msg)) {
           st.alert_open = true;
@@ -687,13 +704,13 @@ async function runCheck(env) {
           st.alert_opened_ms = now;
           st.last_alert_ms = now;
         }
-      } else if (bad && st.alert_open && overall !== "signals_disagree" &&
-                 (SEVERITY[overall] || 0) > (SEVERITY[st.alert_state] || 0)) {
+      } else if (bad && st.alert_open && overall in SEVERITY && st.alert_state in SEVERITY &&
+                 SEVERITY[overall] > SEVERITY[st.alert_state]) {
         if (await postDiscord(env.DISCORD_ALERTS_WEBHOOK, worseMessage(service, overall, probeStatus, now))) {
           st.alert_state = overall;
           st.last_alert_ms = now;
         }
-      } else if (overall === "operational" && st.alert_open) {
+      } else if (GOOD_STATES.includes(overall) && st.alert_open) {
         if (await postDiscord(env.DISCORD_ALERTS_WEBHOOK, recoveredMessage(service, st.alert_opened_ms, now))) {
           st.alert_open = false;
           st.alert_state = null;

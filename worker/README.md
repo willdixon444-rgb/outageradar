@@ -19,7 +19,7 @@ This folder is NOT public: Render only publishes `site/`.
 
 Every service shows **Unknown** until its feed mapping is approved. On the
 first run of each new version the checker saves the raw feeds and check
-headers to a versioned KV key (`samples:v1.2.0` for this version) and posts
+headers to a versioned KV key (`samples:v1.3.0` for this version) and posts
 "Samples saved" to the health channel. Old `samples:v...` keys can be deleted.
 
 To approve after reviewing the samples, add a plain-text variable
@@ -41,11 +41,15 @@ Added in v1.2 (sample mode until reviewed):
 - Cohere: assumed Statuspage indicator (UNVERIFIED until sampled).
 - Hugging Face: Better Stack `aggregate_state` from `/index.json`
   (UNVERIFIED until sampled). downtime = Major outage.
-- Grok / xAI: official RSS feed. It lists incidents, not a current status, so
-  xAI stays Unknown even when approved, until a reliable mapping exists.
+- Grok / xAI (v1.3): JSON summary at `data.x.ai/status/summary.json` (on xAI's
+  own domain, not in its docs). Only components "Global (api.x.ai)" and
+  "grok.com" count; Cursor products in the same feed are ignored.
+  "available" = Operational; any other word = Unknown until reviewed.
 - Gemini, DeepSeek: no official public feed. Official status is always
-  "No official public feed"; the board shows our API check beside it.
-  Gemini's API may answer 403 without a key, which counts as answering.
+  "No official public feed". Once approved, overall uses our check only:
+  `check_ok` ("Up (our check only)") or `check_failed` ("Not answering (our
+  check only)") after 2 failed checks; otherwise Unknown. These never show as
+  Operational. Gemini's API answers 403 without a key, which counts as answering.
 
 ## Status rules
 
@@ -65,7 +69,9 @@ Added in v1.2 (sample mode until reviewed):
 Alerts channel (only for approved services; 30-minute cooldown between alerts):
 - OUTAGE: official Partial or Major outage starts.
 - WORSE: an open outage gets worse.
-- CHECK: our site check failed twice but official says Operational.
+- CHECK: our site check failed twice but official says Operational, or (for
+  Gemini/DeepSeek) our API check failed twice and there is no feed to confirm.
+  RECOVERED for these says "our check is answering again".
 - RECOVERED: back to Operational. Never sent while the status is Unknown.
 - Degraded alone does not alert.
 
