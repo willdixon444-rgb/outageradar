@@ -100,6 +100,10 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .row.s-check_ok .pill,.row.s-check_failed .pill{border-style:dashed;background:transparent}
 .row.s-check_ok,.row.s-check_failed{border-left-style:dashed}
 
+.partner{margin-top:1.75rem;padding:1rem 1.1rem;border:1px solid var(--line);border-radius:8px;background:#0a1912}
+.partner p{margin:0;max-width:72ch;color:var(--muted)}
+.partner strong{color:var(--text)}
+.partner a{color:var(--op);font-weight:650}
 .about{margin-top:2rem;padding-top:1.25rem;border-top:1px solid var(--line);color:var(--muted);font-size:.92rem}
 .about h2{margin:0 0 .5rem;font-size:1rem;color:var(--text)}
 .about p{margin:0 0 .6rem;max-width:72ch}
@@ -194,13 +198,17 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
       <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
   </ul>
 
+  <aside class="partner" aria-label="Related tool">
+    <p><strong>Building on these APIs?</strong> <a href="https://tokenmargin.dev" target="_blank" rel="noopener">TokenMargin</a> compares API costs across providers and generates fallback router configs, so one provider&rsquo;s outage doesn&rsquo;t take your app down.</p>
+  </aside>
+
   <footer class="about">
     <h2>How to read this board</h2>
     <p><strong>Official status</strong> is what each provider publishes on its own status page. Each service name links there.</p>
     <p><strong>Our check</strong> is OutageRadar asking the provider&rsquo;s server or website for a reply every five minutes. A reply proves the server is up; it does not prove the AI is answering questions.</p>
     <p><strong>Up (our check only)</strong> is used where a provider publishes no status feed, so our check is the only signal. It is shown with a dashed outline so it is never mistaken for an official all-clear.</p>
     <p>All times are UTC. When we cannot get fresh data, services show Unknown rather than a guess.</p>
-    <p class="legal">OutageRadar is independent and not affiliated with any service listed. &copy; 2026 OutageRadar</p>
+    <p class="legal">OutageRadar is independent and not affiliated with any service listed. <a href="/privacy.html">Privacy</a>. Questions or corrections: <a href="mailto:contact@liveoutageradar.com">contact@liveoutageradar.com</a>. &copy; 2026 OutageRadar</p>
   </footer>
 </div>
 <script type="module" src="board.js"></script>

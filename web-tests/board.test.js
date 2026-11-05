@@ -244,3 +244,48 @@ test("only the live state pulses", () => {
   }
   assert.equal(liveState(buildView(fresh(all()), { elapsedSec: 0 }), { paused: false }).pulse, true);
 });
+
+// ---------- page markup ----------
+import { readFileSync } from "node:fs";
+const PAGE = readFileSync(new URL("../site/preview/index.html", import.meta.url), "utf8");
+
+test("the TokenMargin partner link is on the page", () => {
+  assert.match(PAGE, /href="https:\/\/tokenmargin\.dev\/?"/);
+});
+
+test("every link that opens a new tab is protected with rel=noopener", () => {
+  const tags = PAGE.match(/<a\b[^>]*target="_blank"[^>]*>/g) || [];
+  assert.ok(tags.length > 0);
+  for (const t of tags) assert.match(t, /rel="[^"]*noopener[^"]*"/, t);
+});
+
+test("the preview stays hidden from search engines", () => {
+  assert.match(PAGE, /<meta name="robots" content="noindex, nofollow">/);
+});
+
+// ---------- privacy page (and the promises it makes) ----------
+const PRIVACY_PATH = new URL("../site/privacy.html", import.meta.url);
+
+test("the privacy page exists, is hidden pre-launch, and names the contact address", () => {
+  const p = readFileSync(PRIVACY_PATH, "utf8");
+  assert.match(p, /<meta name="robots" content="noindex, nofollow">/);
+  assert.match(p, /contact@liveoutageradar\.com/);
+  assert.match(p, /no cookies/i);
+  assert.match(p, /Render/);
+  assert.match(p, /Cloudflare/);
+  assert.match(p, /IP address/);
+});
+
+test("the board links to the privacy page", () => {
+  assert.match(PAGE, /href="\/privacy\.html"/);
+});
+
+test("the board really stores nothing in the browser (the privacy page promises this)", () => {
+  const js = readFileSync(new URL("../site/preview/board.js", import.meta.url), "utf8");
+  assert.doesNotMatch(js, /localStorage|sessionStorage|indexedDB|document\.cookie/);
+});
+
+test("the board loads no third-party scripts, fonts or images", () => {
+  const external = PAGE.match(/<(script|link|img)\b[^>]*(src|href)="https?:\/\/[^"]+"/g) || [];
+  assert.deepEqual(external, []);
+});
