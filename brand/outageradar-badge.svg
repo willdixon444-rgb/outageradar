@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="368" height="72" viewBox="0 0 368 72" role="img" aria-label="OutageRadar: live outage radar for 10 AI APIs">
+  <title>OutageRadar: live outage radar for 10 AI APIs</title>
+  <defs>
+    <linearGradient id="sw" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4be08a" stop-opacity="0"/>
+      <stop offset="1" stop-color="#4be08a" stop-opacity=".55"/>
+    </linearGradient>
+  </defs>
+  <rect x=".75" y=".75" width="366.5" height="70.5" rx="12" fill="#06110d" stroke="#1f4a33" stroke-width="1.5"/>
+  <g transform="translate(36 36)">
+    <circle r="25" fill="#07140e" stroke="#4be08a" stroke-width="2"/>
+    <circle r="17" fill="none" stroke="#4be08a" stroke-opacity=".3"/>
+    <circle r="9" fill="none" stroke="#4be08a" stroke-opacity=".3"/>
+    <line x1="-25" y1="0" x2="25" y2="0" stroke="#4be08a" stroke-opacity=".22"/>
+    <line x1="0" y1="-25" x2="0" y2="25" stroke="#4be08a" stroke-opacity=".22"/>
+    <path d="M0 0 L25 0 A25 25 0 0 0 7.7 -23.8 Z" fill="url(#sw)"/>
+    <circle cx="9" cy="-13" r="2.6" fill="#4be08a"/>
+    <circle cx="-12" cy="-7" r="2.6" fill="#4be08a"/>
+    <circle cx="15" cy="9" r="2.6" fill="#4be08a"/>
+    <circle cx="-8" cy="13" r="2.6" fill="#ffb547"/>
+    <circle r="2" fill="#4be08a"/>
+  </g>
+  <text x="74" y="32" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="20" font-weight="700" fill="#e8fff1">Outage<tspan fill="#4be08a">Radar</tspan></text>
+  <text x="74" y="52" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="12.5" fill="#9cc9ad">Know when to switch: live status of 10 AI APIs</text>
+</svg>
