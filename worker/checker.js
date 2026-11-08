@@ -9,6 +9,11 @@
 // What it serves (Custom Domain data.liveoutageradar.com):
 //   GET /status.json  public board data (CORS: our site only)
 //   GET /health       "ok" if the last run saved within 15 minutes, else 503
+//                     (v1.6: each service also carries "incidents": when the
+//                     log started and the last incident, see incident log)
+//   POST /v, /c       page-view / link-click pings from our site (daily totals
+//                     in D1; no IP, user agent, cookie or ID stored)
+//   GET /admin        private traffic dashboard (data needs ADMIN_KEY)
 //
 // Safety rules built in:
 //   - A service shows "unknown" until its mapping is approved
@@ -24,6 +29,8 @@
 //   DISCORD_ALERTS_WEBHOOK  secret, outage channel
 //   DISCORD_HEALTH_WEBHOOK  secret, health channel
 //   APPROVED_MAPPINGS       plain text variable, optional, comma list
+//   DB                      D1 database binding, optional (traffic counts)
+//   ADMIN_KEY               secret, 24+ characters, unlocks /admin data
 //   SEND_TEST_ALERT         plain text variable, optional. Any value sends one
 //                           TEST message to the alerts channel; change the
 //                           value to send another. Remove it when done.
@@ -31,7 +38,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.4.0";
+const VERSION = "1.6.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -112,13 +119,17 @@ const SERVICES = [
     name: "Groq",
     status_page: "https://groqstatus.com",
     feed: "https://groqstatus.com/api/v2/components.json",
-    samples: ["https://groqstatus.com/api/v2/status.json"],
+    // v1.6: probe moved from the website (console.groq.com) to the API
+    // server, like the others. Groq documents GET /openai/v1/models with a
+    // Bearer key; the no-key answer (expected 401) is confirmed by the
+    // v1.6 sample. The old website address is kept as a one-time sample.
+    samples: ["https://groqstatus.com/api/v2/status.json", "https://console.groq.com/"],
     parser: "components",
     components: ["API", "Website"],
-    probe: "https://console.groq.com/",
-    probe_ok: [],
-    probe_label: SITE_LABEL,
-    probe_words: "site",
+    probe: "https://api.groq.com/openai/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
   },
   // ---- Added in v1.2. Sample mode until reviewed (not in APPROVED_MAPPINGS). ----
   {
@@ -593,6 +604,78 @@ async function collectSamples(probes) {
   return { saved_at_utc: iso(Date.now()), version: VERSION, feeds, probes: probeSamples };
 }
 
+// ---------- incident log (v1.6) ----------
+//
+// For each approved service: when a problem started and ended, the worst
+// state seen, and whether the provider confirmed it ("official") or only our
+// check saw it ("our_check"). Kept inside state:v1 (already written every
+// run), so it costs no extra KV writes. Times are when our checker first saw
+// the change (runs are 5 minutes apart). Unknown never closes an incident.
+
+const INCIDENT_KEEP = 20;
+const INCIDENT_KEEP_MS = 90 * 24 * 60 * MIN;
+const OFFICIAL_INCIDENT_STATES = ["degraded", "partial_outage", "major_outage"];
+const CHECK_INCIDENT_STATES = ["signals_disagree", "check_failed"];
+const INCIDENT_RANK = {
+  signals_disagree: 1, check_failed: 2, degraded: 1, partial_outage: 2, major_outage: 3,
+};
+
+function validIncident(x) {
+  return x && typeof x === "object" && typeof x.start_ms === "number" &&
+    (x.end_ms === null || typeof x.end_ms === "number") &&
+    typeof x.worst === "string" && (x.kind === "official" || x.kind === "our_check");
+}
+
+// Returns a clean copy: anything damaged is dropped instead of breaking the run.
+function cleanIncidentLog(state) {
+  const raw = state.incidents && typeof state.incidents === "object" ? state.incidents : {};
+  const since = state.incident_since && typeof state.incident_since === "object" ? state.incident_since : {};
+  const incidents = {};
+  const sinceOut = {};
+  for (const s of SERVICES) {
+    incidents[s.id] = Array.isArray(raw[s.id]) ? raw[s.id].filter(validIncident) : [];
+    if (typeof since[s.id] === "number") sinceOut[s.id] = since[s.id];
+  }
+  return { incidents, since: sinceOut };
+}
+
+function updateIncidents(list, overall, now) {
+  const open = list.length && list[list.length - 1].end_ms === null ? list[list.length - 1] : null;
+  const official = OFFICIAL_INCIDENT_STATES.includes(overall);
+  const ours = CHECK_INCIDENT_STATES.includes(overall);
+  if (official || ours) {
+    if (!open) {
+      list.push({ start_ms: now, end_ms: null, worst: overall, kind: official ? "official" : "our_check" });
+    } else if (official && open.kind !== "official") {
+      // The provider has now confirmed it: from here on the official worst counts.
+      open.kind = "official";
+      open.worst = overall;
+    } else if (official || open.kind === "our_check") {
+      if ((INCIDENT_RANK[overall] || 0) > (INCIDENT_RANK[open.worst] || 0)) open.worst = overall;
+    }
+  } else if (open && GOOD_STATES.includes(overall)) {
+    open.end_ms = now;
+  }
+  // Unknown or maintenance: leave any open incident open.
+  const kept = list.filter((x) => x.end_ms === null || now - x.end_ms <= INCIDENT_KEEP_MS);
+  return kept.slice(-INCIDENT_KEEP);
+}
+
+function publicIncidents(list, sinceMs, now) {
+  if (typeof sinceMs !== "number") return null;
+  const last = list.length ? list[list.length - 1] : null;
+  return {
+    since_utc: iso(sinceMs),
+    last: last ? {
+      started_utc: iso(last.start_ms),
+      ended_utc: last.end_ms === null ? null : iso(last.end_ms),
+      worst: last.worst,
+      kind: last.kind,
+      minutes: Math.max(0, Math.round(((last.end_ms === null ? now : last.end_ms) - last.start_ms) / MIN)),
+    } : null,
+  };
+}
+
 async function runCheck(env) {
   const kv = env && env.KV;
   if (!kv) {
@@ -641,6 +724,7 @@ async function runCheck(env) {
 
   const now = Date.now();
   const publicServices = [];
+  const log = cleanIncidentLog(state);
 
   for (let i = 0; i < SERVICES.length; i++) {
     const service = SERVICES[i];
@@ -721,6 +805,14 @@ async function runCheck(env) {
       // Unknown while an alert is open: say nothing. We do not claim recovery we cannot see.
     }
 
+    // Incident log: approved services only, like alerts.
+    let incidents = null;
+    if (isApproved) {
+      if (typeof log.since[service.id] !== "number") log.since[service.id] = now;
+      log.incidents[service.id] = updateIncidents(log.incidents[service.id], overall, now);
+      incidents = publicIncidents(log.incidents[service.id], log.since[service.id], now);
+    }
+
     st.last_official = official;
     st.last_probe = probeStatus;
     st.feed_preview = feed.status;
@@ -745,8 +837,12 @@ async function runCheck(env) {
         http_status: probe.code || null,
         note: probe.reason,
       },
+      incidents,
     });
   }
+
+  state.incidents = log.incidents;
+  state.incident_since = log.since;
 
   state.schema = 1;
   state.version = VERSION;
@@ -787,7 +883,7 @@ function corsHeaders(request) {
   const h = { vary: "Origin" };
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     h["access-control-allow-origin"] = origin;
-    h["access-control-allow-methods"] = "GET, OPTIONS";
+    h["access-control-allow-methods"] = "GET, POST, OPTIONS";
     h["access-control-max-age"] = "86400";
   }
   return h;
@@ -841,6 +937,684 @@ function respond(body, status, extraHeaders, contentType) {
   });
 }
 
+// ---------- page-view and link-click counts (v1.5, D1) ----------
+//
+// The board and privacy page send one small ping per page load (POST /v) and
+// one per outbound link click (POST /c). We keep DAILY TOTALS ONLY:
+//   views  (day, page, country, source, bot) -> n
+//   clicks (day, link, page)                 -> n
+// No IP address, user agent, cookie or ID is ever stored. Country comes from
+// Cloudflare. Totals older than COUNT_RETENTION_DAYS are deleted daily.
+// Free D1 limit: 100,000 rows written per day; going over makes writes fail
+// (the board is unaffected: it reads KV, not D1).
+
+const COUNT_RETENTION_DAYS = 400;
+const PING_MAX_BYTES = 512;
+const ADMIN_KEY_MIN_LENGTH = 24;
+const D1_FREE_WRITES_PER_DAY = 100000;
+const ADMIN_RANGES = [7, 30, 90, 365];
+const ADMIN_DEFAULT_RANGE = 30;
+const DAY_MS = 24 * 60 * MIN;
+
+const COUNT_SCHEMA = [
+  "CREATE TABLE IF NOT EXISTS views (day TEXT NOT NULL, page TEXT NOT NULL, country TEXT NOT NULL, " +
+    "source TEXT NOT NULL, bot INTEGER NOT NULL, n INTEGER NOT NULL, " +
+    "PRIMARY KEY (day, page, country, source, bot)) WITHOUT ROWID",
+  "CREATE TABLE IF NOT EXISTS clicks (day TEXT NOT NULL, link TEXT NOT NULL, page TEXT NOT NULL, " +
+    "n INTEGER NOT NULL, PRIMARY KEY (day, link, page)) WITHOUT ROWID",
+];
+const VIEW_UPSERT = "INSERT INTO views (day, page, country, source, bot, n) VALUES (?, ?, ?, ?, ?, 1) " +
+  "ON CONFLICT (day, page, country, source, bot) DO UPDATE SET n = n + 1";
+const CLICK_UPSERT = "INSERT INTO clicks (day, link, page, n) VALUES (?, ?, ?, 1) " +
+  "ON CONFLICT (day, link, page) DO UPDATE SET n = n + 1";
+
+const BOT_UA = /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|scanner|monitor|python|curl|wget|httpclient|java\/|go-http|node-fetch|axios|okhttp|uptime|phantom|puppeteer|playwright|selenium/i;
+const OWN_DOMAIN = /(^|\.)liveoutageradar\.com$/;
+const HOST_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+const PAGE_RE = /^\/[a-z0-9\/._-]{0,80}$/;
+const TAG_RE = /^[a-z0-9_-]{1,30}$/;
+
+const SEARCH_ENGINES = [
+  [/(^|\.)google\.[a-z.]{2,6}$/, "Google"],
+  [/(^|\.)bing\.com$/, "Bing"],
+  [/(^|\.)duckduckgo\.com$/, "DuckDuckGo"],
+  [/(^|\.)yahoo\.[a-z.]{2,6}$/, "Yahoo"],
+  [/(^|\.)yandex\.[a-z.]{2,6}$/, "Yandex"],
+  [/(^|\.)baidu\.com$/, "Baidu"],
+  [/(^|\.)ecosia\.org$/, "Ecosia"],
+  [/^search\.brave\.com$/, "Brave"],
+];
+
+function dayString(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function cleanPage(value) {
+  if (typeof value !== "string") return null;
+  let p = value.toLowerCase().split(/[?#]/)[0];
+  if (p.endsWith("/index.html")) p = p.slice(0, -"index.html".length);
+  if (!PAGE_RE.test(p) || p.includes("..")) return null;
+  return p;
+}
+
+function cleanHost(value) {
+  if (typeof value !== "string") return null;
+  const h = value.trim().toLowerCase().replace(/^www\./, "");
+  return h.length <= 80 && HOST_RE.test(h) ? h : null;
+}
+
+function viewSource(ref, tag) {
+  if (typeof tag === "string" && tag !== "") {
+    const t = tag.toLowerCase();
+    return TAG_RE.test(t) ? "utm:" + t : "other";
+  }
+  if (typeof ref !== "string" || ref === "") return "direct";
+  const host = cleanHost(ref);
+  if (!host) return "other";
+  return OWN_DOMAIN.test(host) ? "internal" : host;
+}
+
+function countryOf(request) {
+  const c = request.cf && typeof request.cf.country === "string" ? request.cf.country.toUpperCase() : "";
+  return /^[A-Z0-9]{2}$/.test(c) ? c : "XX";
+}
+
+function isBot(request, form) {
+  const ua = request.headers.get("user-agent") || "";
+  return ua === "" || BOT_UA.test(ua) || form.get("w") === "1";
+}
+
+function engineFor(source) {
+  for (const [re, name] of SEARCH_ENGINES) if (re.test(source)) return name;
+  return null;
+}
+
+function isMissingTable(err) {
+  return /no such table/i.test(String(err && err.message));
+}
+
+async function ensureCountTables(db) {
+  await db.batch(COUNT_SCHEMA.map((sql) => db.prepare(sql)));
+}
+
+async function bumpCount(db, sql, args) {
+  try {
+    await db.prepare(sql).bind(...args).run();
+  } catch (err) {
+    if (!isMissingTable(err)) throw err;
+    await ensureCountTables(db);
+    await db.prepare(sql).bind(...args).run();
+  }
+}
+
+function pingHeaders(request) {
+  return { ...corsHeaders(request), "cache-control": "no-store" };
+}
+
+async function readPing(request) {
+  const declared = Number(request.headers.get("content-length") || "0");
+  if (declared > PING_MAX_BYTES) return { tooBig: true };
+  const text = await request.text();
+  if (text.length > PING_MAX_BYTES) return { tooBig: true };
+  return { form: new URLSearchParams(text) };
+}
+
+async function handlePing(request, env, kind) {
+  const headers = pingHeaders(request);
+  const origin = request.headers.get("origin");
+  if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+    return new Response(null, { status: 403, headers });
+  }
+  const { tooBig, form } = await readPing(request);
+  if (tooBig) return new Response(null, { status: 413, headers });
+
+  const page = cleanPage(form.get("p"));
+  if (!page) return new Response(null, { status: 400, headers });
+  const day = dayString(Date.now());
+  const bot = isBot(request, form);
+
+  let sql;
+  let args;
+  if (kind === "view") {
+    sql = VIEW_UPSERT;
+    args = [day, page, countryOf(request), viewSource(form.get("r"), form.get("s")), bot ? 1 : 0];
+  } else {
+    const raw = (form.get("l") || "").toLowerCase();
+    const link = raw === "email" ? "email" : cleanHost(raw);
+    if (!link) return new Response(null, { status: 400, headers });
+    if (bot) return new Response(null, { status: 204, headers });
+    sql = CLICK_UPSERT;
+    args = [day, link, page];
+  }
+
+  if (env && env.DB) {
+    try {
+      await bumpCount(env.DB, sql, args);
+    } catch (err) {
+      console.warn("count write failed");
+    }
+  }
+  return new Response(null, { status: 204, headers });
+}
+
+async function pruneCounts(env, now) {
+  if (!env || !env.DB) return;
+  const d = new Date(now);
+  if (d.getUTCHours() !== 3 || d.getUTCMinutes() >= 5) return;
+  const cutoff = dayString(now - COUNT_RETENTION_DAYS * DAY_MS);
+  try {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM views WHERE day < ?").bind(cutoff),
+      env.DB.prepare("DELETE FROM clicks WHERE day < ?").bind(cutoff),
+    ]);
+  } catch (err) {
+    if (!isMissingTable(err)) console.warn("count cleanup failed");
+  }
+}
+
+async function sha256Bytes(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return new Uint8Array(digest);
+}
+
+// Compares hashes so the time taken does not depend on where the keys differ.
+async function adminKeyMatches(given, expected) {
+  const a = await sha256Bytes(given);
+  const b = await sha256Bytes(expected);
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+function adminJson(body, status) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+async function queryCounts(db, sinceDay, today) {
+  const q = (sql, ...args) => db.prepare(sql).bind(...args);
+  const run = () => db.batch([
+    q("SELECT day, bot, SUM(n) AS n FROM views WHERE day >= ? GROUP BY day, bot", sinceDay),
+    q("SELECT page, SUM(n) AS n FROM views WHERE day >= ? AND bot = 0 GROUP BY page ORDER BY n DESC, page LIMIT 50", sinceDay),
+    q("SELECT country, SUM(n) AS n FROM views WHERE day >= ? AND bot = 0 GROUP BY country ORDER BY n DESC, country LIMIT 80", sinceDay),
+    q("SELECT source, SUM(n) AS n FROM views WHERE day >= ? AND bot = 0 GROUP BY source ORDER BY n DESC, source LIMIT 100", sinceDay),
+    q("SELECT day, SUM(n) AS n FROM clicks WHERE day >= ? GROUP BY day", sinceDay),
+    q("SELECT link, SUM(n) AS n FROM clicks WHERE day >= ? GROUP BY link ORDER BY n DESC, link LIMIT 50", sinceDay),
+    q("SELECT (SELECT COALESCE(SUM(n), 0) FROM views WHERE day = ?) + " +
+      "(SELECT COALESCE(SUM(n), 0) FROM clicks WHERE day = ?) AS n", today, today),
+    q("SELECT MIN(day) AS first FROM views"),
+  ]);
+  try {
+    return await run();
+  } catch (err) {
+    if (!isMissingTable(err)) throw err;
+    await ensureCountTables(db);
+    return run();
+  }
+}
+
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function buildAdminData(results, rangeDays, now) {
+  const rows = (i) => (results[i] && Array.isArray(results[i].results) ? results[i].results : []);
+  const today = dayString(now);
+  const byDay = new Map();
+  for (let i = rangeDays - 1; i >= 0; i -= 1) {
+    byDay.set(dayString(now - i * DAY_MS), { human: 0, bot: 0, clicks: 0 });
+  }
+  for (const r of rows(0)) {
+    const d = byDay.get(r.day);
+    if (d) d[num(r.bot) ? "bot" : "human"] += num(r.n);
+  }
+  for (const r of rows(4)) {
+    const d = byDay.get(r.day);
+    if (d) d.clicks += num(r.n);
+  }
+  const series = [];
+  let prev = null;
+  for (const [day, d] of byDay) {
+    // No change % for today: a part-day against a full day would mislead.
+    const dod = day !== today && prev && prev.human > 0
+      ? Math.round(((d.human - prev.human) / prev.human) * 100) : null;
+    series.push({ day, human: d.human, bot: d.bot, clicks: d.clicks, dod_pct: dod });
+    prev = d;
+  }
+  const totals = series.reduce((t, d) => ({
+    human: t.human + d.human, bot: t.bot + d.bot, clicks: t.clicks + d.clicks,
+  }), { human: 0, bot: 0, clicks: 0 });
+
+  const sources = rows(3).map((r) => ({ source: String(r.source), n: num(r.n) }));
+  const engineTotals = new Map();
+  for (const s of sources) {
+    const e = engineFor(s.source);
+    if (e) engineTotals.set(e, (engineTotals.get(e) || 0) + s.n);
+  }
+  const engines = [...engineTotals].map(([engine, n]) => ({ engine, n }))
+    .sort((a, b) => b.n - a.n || a.engine.localeCompare(b.engine));
+
+  const todayRow = series[series.length - 1];
+  const hours = (now - Date.parse(today + "T00:00:00Z")) / (60 * MIN);
+  const writes = num(rows(6)[0] && rows(6)[0].n);
+  return {
+    generated_at_utc: iso(now),
+    range_days: rangeDays,
+    first_day: rows(7)[0] && rows(7)[0].first ? String(rows(7)[0].first) : null,
+    series,
+    totals,
+    today: {
+      day: today,
+      human: todayRow.human,
+      bot: todayRow.bot,
+      clicks: todayRow.clicks,
+      hours_elapsed: Math.round(hours * 10) / 10,
+      run_rate: hours >= 1 ? Math.round((todayRow.human / hours) * 24) : null,
+    },
+    pages: rows(1).map((r) => ({ page: String(r.page), n: num(r.n) })),
+    countries: rows(2).map((r) => ({ country: String(r.country), n: num(r.n) })),
+    sources,
+    engines,
+    links: rows(5).map((r) => ({ link: String(r.link), n: num(r.n) })),
+    quota: {
+      writes_today_est: writes,
+      limit: D1_FREE_WRITES_PER_DAY,
+      pct: Math.round((writes / D1_FREE_WRITES_PER_DAY) * 1000) / 10,
+    },
+  };
+}
+
+async function handleAdminData(request, env, url) {
+  const expected = env && typeof env.ADMIN_KEY === "string" ? env.ADMIN_KEY : "";
+  if (expected.length < ADMIN_KEY_MIN_LENGTH) return adminJson({ error: "admin_key_missing" }, 503);
+  const auth = request.headers.get("authorization") || "";
+  const given = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!given || !(await adminKeyMatches(given, expected))) return adminJson({ error: "wrong_key" }, 401);
+  if (!env.DB) return adminJson({ error: "db_missing" }, 503);
+
+  const asked = Number(url.searchParams.get("days"));
+  const rangeDays = ADMIN_RANGES.includes(asked) ? asked : ADMIN_DEFAULT_RANGE;
+  const now = Date.now();
+  try {
+    const results = await queryCounts(env.DB, dayString(now - (rangeDays - 1) * DAY_MS), dayString(now));
+    return adminJson(buildAdminData(results, rangeDays, now), 200);
+  } catch (err) {
+    console.warn("dashboard read failed");
+    return adminJson({ error: "db_error" }, 503);
+  }
+}
+
+const ADMIN_CSP = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; " +
+  "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+function adminPage(body, contentType) {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": contentType,
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "content-security-policy": ADMIN_CSP,
+    },
+  });
+}
+
+// The dashboard page holds no data: it asks for the key, then loads
+// /admin/data with the key in a request header (never in the URL).
+const ADMIN_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>OutageRadar traffic (private)</title>
+<style>
+:root{--bg:#06110d;--panel:#0a1912;--line:#173325;--text:#e8fff1;--muted:#9cc9ad;--op:#4be08a;--bot:#5b7a69;--teal:#5fd4d0;--amber:#ffb547;--bad:#ff8a80;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.wrap{max-width:62rem;margin:0 auto;padding:1rem 1rem 3rem}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.25rem 1rem;padding-bottom:.75rem;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:1.35rem}
+h1 span{color:var(--op)}
+.meta{color:var(--muted);font-size:.85rem;margin:0}
+h2{font-size:1rem;margin:0 0 .6rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem;margin-top:1rem}
+label{display:block;margin-bottom:.4rem;color:var(--muted)}
+input[type=password]{width:100%;max-width:26rem;font:inherit;padding:.6rem .7rem;border-radius:8px;border:1px solid var(--line);background:#04100b;color:var(--text)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:#0f241a;color:var(--text);padding:.5rem .9rem}
+button.primary{background:var(--op);color:#05200f;border-color:var(--op);font-weight:600;margin-top:.6rem}
+button[aria-pressed=true]{border-color:var(--op);color:var(--op)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.hide{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.err{color:var(--bad);margin:.6rem 0 0}
+.ranges{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:1rem}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;margin-top:1rem}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.8rem}
+.stat b{display:block;font-size:1.9rem;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:.85rem}
+.stat.lead b{color:var(--op)}
+#chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;gap:1rem;color:var(--muted);font-size:.8rem;margin-top:.4rem;flex-wrap:wrap}
+.sw{display:inline-block;width:.8rem;height:.8rem;border-radius:2px;vertical-align:-1px;margin-right:.3rem}
+.grid2{display:grid;gap:0 1rem}
+.list{list-style:none;margin:0;padding:0}
+.list li{display:grid;grid-template-columns:1fr auto;gap:.2rem .6rem;padding:.35rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
+.list li:last-child{border-bottom:0}
+.list .k{overflow-wrap:anywhere}
+.list .v{font-variant-numeric:tabular-nums;color:var(--muted)}
+.bar{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line)}
+.bar i{display:block;height:100%;border-radius:2px;background:var(--op)}
+.empty{color:var(--muted);margin:0}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:.35rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500}
+.up{color:var(--op)}.down{color:var(--bad)}
+.meter{height:8px;border-radius:4px;background:var(--line);margin:.5rem 0}
+.meter i{display:block;height:100%;border-radius:4px;background:var(--teal)}
+.meter.warn i{background:var(--amber)}
+footer{color:var(--muted);font-size:.85rem;margin-top:1.5rem}
+a{color:var(--op)}
+@media (min-width:44rem){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}.grid2{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Outage<span>Radar</span> traffic</h1>
+  <p class="meta" id="status">Private. Not linked from the site.</p>
+</header>
+
+<form class="card" id="login" autocomplete="on">
+  <input class="hide" type="text" name="username" autocomplete="username" value="outageradar-admin" tabindex="-1" aria-hidden="true">
+  <label for="key">Admin key</label>
+  <input id="key" name="password" type="password" autocomplete="current-password" required>
+  <div><button class="primary" type="submit">Unlock</button></div>
+  <p class="err" id="loginErr" hidden></p>
+</form>
+
+<main id="dash" hidden>
+  <div class="ranges" role="group" aria-label="Date range">
+    <button type="button" data-days="7">7 days</button>
+    <button type="button" data-days="30">30 days</button>
+    <button type="button" data-days="90">90 days</button>
+    <button type="button" data-days="365">1 year</button>
+    <button type="button" id="refresh">Refresh</button>
+  </div>
+  <p class="err" id="dashErr" hidden></p>
+
+  <div class="stats">
+    <div class="stat lead"><span>Page views</span><b id="sViews">-</b><span id="sViewsSub"></span></div>
+    <div class="stat"><span>Today so far (UTC)</span><b id="sToday">-</b><span id="sTodaySub"></span></div>
+    <div class="stat"><span>Outbound clicks</span><b id="sClicks">-</b><span id="sClicksSub"></span></div>
+    <div class="stat"><span>Bot views (ran our script)</span><b id="sBots">-</b><span id="sBotsSub"></span></div>
+  </div>
+
+  <section class="card">
+    <h2>Page views per day (UTC)</h2>
+    <div id="chart"></div>
+    <div class="legend"><span><i class="sw" style="background:var(--op)"></i>People</span><span><i class="sw" style="background:var(--bot)"></i>Bots</span><span><i class="sw" style="background:var(--amber)"></i>Today, in progress</span></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card"><h2>Where visitors came from</h2><ul class="list" id="sources"></ul></section>
+    <section class="card"><h2>Search engines</h2><ul class="list" id="engines"></ul></section>
+    <section class="card"><h2>Pages</h2><ul class="list" id="pages"></ul></section>
+    <section class="card"><h2>Outbound clicks by site</h2><ul class="list" id="links"></ul></section>
+  </div>
+
+  <section class="card"><h2>Countries</h2><ul class="list" id="countries"></ul></section>
+
+  <section class="card">
+    <h2>Day by day</h2>
+    <div class="scroll"><table><thead><tr><th>Date</th><th>People</th><th>vs day before</th><th>Bots</th><th>Clicks</th></tr></thead><tbody id="days"></tbody></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Free database allowance today</h2>
+    <div class="meter" id="meter"><i></i></div>
+    <p class="empty" id="quota"></p>
+  </section>
+
+  <footer>
+    <p>Counts only: no IP addresses, cookies or IDs are stored. "Bots" means automated browsers that ran the page script; most crawlers never do. For Google search impressions, clicks and crawling, use <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Search Console</a>.</p>
+  </footer>
+</main>
+</div>
+<script src="/admin/app.js"></script>
+</body>
+</html>`;
+
+// Runs in the browser only. Served as /admin/app.js by stringifying this
+// function, so it must not use anything from the Worker's scope.
+function adminApp() {
+  "use strict";
+  var key = "";
+  var days = 30;
+  var timer = null;
+  var busy = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var fmt = function (n) { return Number(n || 0).toLocaleString("en-US"); };
+
+  function show(el, on) { el.hidden = !on; }
+
+  function setError(id, text) {
+    var el = $(id);
+    el.textContent = text || "";
+    show(el, !!text);
+  }
+
+  function flag(cc) {
+    if (!/^[A-Z]{2}$/.test(cc) || cc === "XX") return "";
+    return String.fromCodePoint(0x1F1E6 + cc.charCodeAt(0) - 65, 0x1F1E6 + cc.charCodeAt(1) - 65) + " ";
+  }
+
+  function sourceLabel(s) {
+    if (s === "direct") return "Direct (typed, bookmark or app)";
+    if (s === "internal") return "Our own pages";
+    if (s === "other") return "Other (unreadable)";
+    if (s.indexOf("utm:") === 0) return "Tag: " + s.slice(4);
+    return s;
+  }
+
+  function fillList(id, items, labelFn, emptyText) {
+    var ul = $(id);
+    ul.textContent = "";
+    if (!items.length) {
+      var li0 = document.createElement("li");
+      li0.className = "empty";
+      li0.textContent = emptyText;
+      ul.appendChild(li0);
+      return;
+    }
+    var max = items[0].n || 1;
+    items.forEach(function (it) {
+      var li = document.createElement("li");
+      var k = document.createElement("span");
+      k.className = "k";
+      k.textContent = labelFn(it);
+      var v = document.createElement("span");
+      v.className = "v";
+      v.textContent = fmt(it.n);
+      var bar = document.createElement("span");
+      bar.className = "bar";
+      var fill = document.createElement("i");
+      fill.style.width = Math.max(2, Math.round((it.n / max) * 100)) + "%";
+      bar.appendChild(fill);
+      li.appendChild(k);
+      li.appendChild(v);
+      li.appendChild(bar);
+      ul.appendChild(li);
+    });
+  }
+
+  function chart(series) {
+    var NS = "http://www.w3.org/2000/svg";
+    var box = $("chart");
+    var W = Math.max(280, Math.round(box.clientWidth || 640)), H = 200, padL = 34, padB = 22, padT = 8;
+    var max = 1;
+    series.forEach(function (d) { max = Math.max(max, d.human + d.bot); });
+    var step = Math.pow(10, Math.floor(Math.log10(max)));
+    var top = Math.ceil(max / step) * step;
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Page views per day");
+    var plotH = H - padB - padT;
+    var y = function (v) { return padT + plotH - (v / top) * plotH; };
+    [0, 0.5, 1].forEach(function (f) {
+      var gy = y(top * f);
+      var line = document.createElementNS(NS, "line");
+      line.setAttribute("x1", padL); line.setAttribute("x2", W);
+      line.setAttribute("y1", gy); line.setAttribute("y2", gy);
+      line.setAttribute("stroke", "#173325");
+      svg.appendChild(line);
+      var t = document.createElementNS(NS, "text");
+      t.setAttribute("x", padL - 6); t.setAttribute("y", gy + 4);
+      t.setAttribute("text-anchor", "end"); t.setAttribute("fill", "#9cc9ad"); t.setAttribute("font-size", "11");
+      t.textContent = fmt(Math.round(top * f));
+      svg.appendChild(t);
+    });
+    var slot = (W - padL) / series.length;
+    var bw = Math.max(1, Math.min(28, slot * 0.7));
+    var labelEvery = Math.ceil(series.length / Math.max(3, Math.floor((W - padL) / 60)));
+    series.forEach(function (d, i) {
+      var x = padL + i * slot + (slot - bw) / 2;
+      var last = i === series.length - 1;
+      var hb = y(0) - y(d.human);
+      var bb = y(0) - y(d.bot);
+      var r1 = document.createElementNS(NS, "rect");
+      r1.setAttribute("x", x); r1.setAttribute("width", bw);
+      r1.setAttribute("y", y(d.human)); r1.setAttribute("height", Math.max(0, hb));
+      r1.setAttribute("fill", last ? "#ffb547" : "#4be08a");
+      var tip = document.createElementNS(NS, "title");
+      tip.textContent = d.day + ": " + fmt(d.human) + " people, " + fmt(d.bot) + " bots";
+      r1.appendChild(tip);
+      svg.appendChild(r1);
+      if (d.bot > 0) {
+        var r2 = document.createElementNS(NS, "rect");
+        r2.setAttribute("x", x); r2.setAttribute("width", bw);
+        r2.setAttribute("y", y(d.human + d.bot)); r2.setAttribute("height", Math.max(0, bb));
+        r2.setAttribute("fill", "#5b7a69");
+        svg.appendChild(r2);
+      }
+      if (i % labelEvery === 0 || last) {
+        var lt = document.createElementNS(NS, "text");
+        lt.setAttribute("x", x + bw / 2); lt.setAttribute("y", H - 6);
+        lt.setAttribute("text-anchor", "middle"); lt.setAttribute("fill", "#9cc9ad"); lt.setAttribute("font-size", "11");
+        lt.textContent = d.day.slice(5);
+        svg.appendChild(lt);
+      }
+    });
+    box.textContent = "";
+    box.appendChild(svg);
+  }
+
+  function render(data) {
+    var t = data.today;
+    $("sViews").textContent = fmt(data.totals.human);
+    $("sViewsSub").textContent = "last " + data.range_days + " days";
+    $("sToday").textContent = fmt(t.human);
+    $("sTodaySub").textContent = t.run_rate === null ? "pace shown after 01:00 UTC" : "on pace for about " + fmt(t.run_rate);
+    $("sClicks").textContent = fmt(data.totals.clicks);
+    $("sClicksSub").textContent = fmt(t.clicks) + " today";
+    $("sBots").textContent = fmt(data.totals.bot);
+    $("sBotsSub").textContent = fmt(t.bot) + " today";
+    lastSeries = data.series;
+    chart(data.series);
+    fillList("sources", data.sources, function (s) { return sourceLabel(s.source); }, "No visits yet.");
+    fillList("engines", data.engines, function (e) { return e.engine; }, "No search visits yet.");
+    fillList("pages", data.pages, function (p) { return p.page; }, "No visits yet.");
+    fillList("links", data.links, function (l) { return l.link === "email" ? "Email link" : l.link; }, "No clicks yet.");
+    fillList("countries", data.countries, function (c) { return flag(c.country) + (c.country === "XX" ? "Unknown" : c.country); }, "No visits yet.");
+    var tb = $("days");
+    tb.textContent = "";
+    data.series.slice().reverse().forEach(function (d, i) {
+      var tr = document.createElement("tr");
+      var dod = i === 0 ? "in progress" : d.dod_pct === null ? "-" : (d.dod_pct > 0 ? "+" : "") + d.dod_pct + "%";
+      [d.day + (i === 0 ? " (today)" : ""), fmt(d.human), dod, fmt(d.bot), fmt(d.clicks)].forEach(function (v, j) {
+        var td = document.createElement("td");
+        td.textContent = v;
+        if (j === 2 && d.dod_pct !== null) td.className = d.dod_pct >= 0 ? "up" : "down";
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    var q = data.quota;
+    var m = $("meter");
+    m.className = "meter" + (q.pct >= 50 ? " warn" : "");
+    m.firstChild.style.width = Math.min(100, Math.max(0.5, q.pct)) + "%";
+    var pctText = q.pct === 0 && q.writes_today_est > 0 ? "under 0.1%" : q.pct + "%";
+    $("quota").textContent = "About " + fmt(q.writes_today_est) + " of " + fmt(q.limit) + " free writes used today (" + pctText + "). Resets at 00:00 UTC. If it runs out, counting pauses until reset; the board keeps working.";
+    $("status").textContent = "Updated " + data.generated_at_utc.slice(11, 16) + " UTC. Refreshes every minute while open.";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-days]"), function (b) {
+      b.setAttribute("aria-pressed", String(Number(b.getAttribute("data-days")) === data.range_days));
+    });
+  }
+
+  function lock(message) {
+    key = "";
+    if (timer) { clearInterval(timer); timer = null; }
+    show($("dash"), false);
+    show($("login"), true);
+    setError("loginErr", message);
+    $("key").focus();
+  }
+
+  function load() {
+    if (!key || busy) return;
+    busy = true;
+    fetch("/admin/data?days=" + days, { headers: { authorization: "Bearer " + key }, cache: "no-store" })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (body) { return { status: res.status, body: body }; });
+      })
+      .then(function (r) {
+        if (r.status === 401) return lock("That key is not right.");
+        if (r.body.error === "admin_key_missing") return lock("The ADMIN_KEY secret is not set on the Worker (it needs at least 24 characters).");
+        if (r.body.error === "db_missing") { setError("dashErr", "No database is connected. Add the D1 binding named DB to the Worker."); return; }
+        if (r.status !== 200) { setError("dashErr", "Could not load the numbers (HTTP " + r.status + "). Try Refresh."); return; }
+        setError("dashErr", "");
+        show($("login"), false);
+        show($("dash"), true);
+        render(r.body);
+      })
+      .catch(function () { setError("dashErr", "Network error. Try Refresh."); })
+      .then(function () { busy = false; });
+  }
+
+  $("login").addEventListener("submit", function (e) {
+    e.preventDefault();
+    key = $("key").value.trim();
+    setError("loginErr", "");
+    load();
+    if (!timer) timer = setInterval(function () { if (!document.hidden) load(); }, 60000);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-days]"), function (b) {
+    b.addEventListener("click", function () { days = Number(b.getAttribute("data-days")); load(); });
+  });
+  $("refresh").addEventListener("click", load);
+  var lastSeries = null;
+  window.addEventListener("resize", function () { if (lastSeries) chart(lastSeries); });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });
+}
+
+const ADMIN_APP_JS = "(" + adminApp.toString() + ")();\n";
+
 async function handleFetch(request, env) {
   const url = new URL(request.url);
   const cors = corsHeaders(request);
@@ -848,9 +1622,19 @@ async function handleFetch(request, env) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: { ...cors, "x-robots-tag": "noindex" } });
   }
+  if (request.method === "POST" && url.pathname === "/v") return handlePing(request, env, "view");
+  if (request.method === "POST" && url.pathname === "/c") return handlePing(request, env, "click");
   if (request.method !== "GET" && request.method !== "HEAD") {
     return respond(JSON.stringify({ error: "method not allowed" }), 405, cors);
   }
+
+  if (url.pathname === "/admin" || url.pathname === "/admin/") {
+    return adminPage(ADMIN_HTML, "text/html; charset=utf-8");
+  }
+  if (url.pathname === "/admin/app.js") {
+    return adminPage(ADMIN_APP_JS, "text/javascript; charset=utf-8");
+  }
+  if (url.pathname === "/admin/data") return handleAdminData(request, env, url);
 
   if (url.pathname === "/status.json") {
     let state = null;
@@ -886,6 +1670,11 @@ export default {
     } catch (err) {
       // Last-resort guard: a bug must not leak details or secrets into logs.
       console.error("checker run failed: " + (err && err.name ? err.name : "error"));
+    }
+    try {
+      await pruneCounts(env, Date.now());
+    } catch (err) {
+      console.warn("count cleanup failed");
     }
   },
   async fetch(request, env, ctx) {

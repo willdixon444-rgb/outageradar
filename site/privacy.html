@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Privacy &ndash; OutageRadar</title>
-<meta name="description" content="How OutageRadar handles your data: no accounts, no cookies, no analytics, no ads and no tracking.">
+<meta name="description" content="How OutageRadar handles your data: no accounts, no cookies, no ads and no tracking. Page views are counted in aggregate, with no IP addresses or IDs stored.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%2307140e' stroke='%234be08a' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%234be08a'/%3E%3Ccircle cx='44' cy='20' r='4' fill='%234be08a'/%3E%3Ccircle cx='20' cy='42' r='4' fill='%23ffb547'/%3E%3C/svg%3E">
 <link rel="canonical" href="https://liveoutageradar.com/privacy.html">
 <style>
@@ -41,16 +41,17 @@ footer{margin-top:2.25rem;padding-top:1rem;border-top:1px solid var(--line);colo
 
   <main>
     <h1>Privacy</h1>
-    <p class="updated">Last updated: November 5, 2026</p>
+    <p class="updated">Last updated: November 7, 2026</p>
 
     <div class="short">
-      <p>OutageRadar has no accounts, no cookies, no analytics, no ads and no tracking. We don&rsquo;t sell or share data, because we don&rsquo;t collect any about you.</p>
+      <p>OutageRadar has no accounts, no cookies, no ads and no tracking. We count page views and link clicks in aggregate (date, page, country and the website you came from). We do not store IP addresses or use cookies or IDs, so the counts can&rsquo;t identify you. We don&rsquo;t sell or share data.</p>
     </div>
 
     <h2>What happens when you visit</h2>
     <ul>
       <li><strong>Website hosting.</strong> The site is hosted by Render, which keeps standard server logs (such as your IP address, browser type and the page requested) as part of running the service. See <a href="https://render.com/privacy" rel="noopener">Render&rsquo;s privacy policy</a>.</li>
-      <li><strong>Live status data.</strong> The board loads its status data from our own address, data.liveoutageradar.com, which runs on Cloudflare. Cloudflare keeps short-lived technical logs of these requests (such as the time, the address requested and network details, which can include your IP address) for a few days. We use them only for troubleshooting. See <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare&rsquo;s privacy policy</a>.</li>
+      <li><strong>Live status data.</strong> The board loads its status data, and sends the visit counts below, through our own address, data.liveoutageradar.com, which runs on Cloudflare. Cloudflare keeps short-lived technical logs of these requests (such as the time, the address requested and network details, which can include your IP address) for a few days. We use them only for troubleshooting. See <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare&rsquo;s privacy policy</a>.</li>
+      <li><strong>Visit counts.</strong> Each page sends one small message to data.liveoutageradar.com when it loads, and one when you click a link to another website. It contains only the page, the domain of the website that sent you here (for example google.com, never the full address), a campaign tag if the link had one (such as utm_source=bluesky), and whether your browser reports being automated. Cloudflare adds your country. We add one to that day&rsquo;s total and keep only the totals, for about 13 months. We do not store IP addresses, browser details or any ID, and nothing is saved on your device.</li>
       <li><strong>Your browser</strong> stores nothing from us: no cookies and no local storage.</li>
     </ul>
 
@@ -61,7 +62,7 @@ footer{margin-top:2.25rem;padding-top:1rem;border-top:1px solid var(--line);colo
     <p>If you email <a href="mailto:contact@liveoutageradar.com">contact@liveoutageradar.com</a>, your message passes through Cloudflare&rsquo;s email forwarding to our inbox. We use it only to reply to you.</p>
 
     <h2>Changes</h2>
-    <p>If we add analytics, ads or affiliate links later, we will update this page before we do, and add a notice where required.</p>
+    <p>If we add ads or affiliate links, or change what we count, we will update this page before we do, and add a notice where required.</p>
 
     <h2>Contact</h2>
     <p><a href="mailto:contact@liveoutageradar.com">contact@liveoutageradar.com</a></p>
@@ -69,5 +70,6 @@ footer{margin-top:2.25rem;padding-top:1rem;border-top:1px solid var(--line);colo
 
   <footer>OutageRadar is independent and not affiliated with any service listed. &copy; 2026 OutageRadar</footer>
 </div>
+<script type="module" src="/ping.js"></script>
 </body>
 </html>

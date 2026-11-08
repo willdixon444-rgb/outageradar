@@ -6,9 +6,10 @@ This folder is NOT public: Render only publishes `site/`.
 
 ## What it does
 
-- Reads each service's official status feed and runs our own check: the website for
-  Groq, the API server for OpenAI, Mistral and Perplexity (their websites block
-  automated checks with a Cloudflare challenge).
+- Reads each service's official status feed and runs our own check against each
+  service's API server (since v1.6 Groq too: `api.groq.com/openai/v1/models`,
+  expected 401 without a key; UNVERIFIED until the v1.6 sample confirms it.
+  An unexpected answer shows Unknown, never Down).
 - Saves everything in one KV key (`state:v1`), about 288 writes a day
   (free cap: 1,000 a day; going over fails, it does not bill).
 - Serves `/status.json` (board data, CORS limited to liveoutageradar.com; since
@@ -16,6 +17,46 @@ This folder is NOT public: Render only publishes `site/`.
   board never trusts a visitor's clock) and
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
+
+## Incident log (v1.6, Nov 8, 2026)
+
+- For each approved service the checker records each problem: start, end,
+  worst state, and kind (`official` = provider's feed showed degraded, partial
+  or major outage; `our_check` = only our check failed twice in a row). An
+  our-check incident becomes `official` if the provider confirms it.
+- Stored inside `state:v1` (keys `incidents` and `incident_since`), which is
+  written every run anyway: no extra KV writes. Last 20 per service; finished
+  incidents older than 90 days are dropped. Damaged entries are discarded.
+- Opens on the first run that sees the problem; closes on the first run that
+  sees Operational / Up again. Unknown or maintenance never closes it.
+  Times are when our checker saw the change (runs are 5 minutes apart).
+- `status.json`: each service has `incidents: { since_utc, last }` (`null`
+  for services not approved). `last` = `{ started_utc, ended_utc (null while
+  ongoing), worst, kind, minutes }`. The board shows "Last incident ...",
+  "Current incident since ..." or "No incidents logged since <date>".
+
+## Traffic counts and private dashboard (v1.5, Nov 7, 2026)
+
+- The board and the privacy page load `site/ping.js`, which sends one ping per
+  page load (`POST /v`) and one per outbound link click (`POST /c`). Only pings
+  from liveoutageradar.com are accepted.
+- Stored in D1 (binding `DB`) as **daily totals only**: `views` (day, page,
+  country, source, bot) and `clicks` (day, link, page). No IP address, user
+  agent, cookie or ID is stored. Tables are created automatically on first use.
+  Totals older than 400 days are deleted in the 03:00 UTC run.
+- Source = `utm:<tag>` if the link had `utm_source`, else the referring domain
+  (without www), `direct`, `internal` (our own pages) or `other` (unreadable).
+- Bots = user agent looks automated, or the browser reports `navigator.webdriver`.
+  Most crawlers never run the script, so they are not counted at all; use Google
+  Search Console's Crawl stats for Googlebot.
+- Free D1 limit: 100,000 rows written per day (each ping = about one write).
+  Over the limit, counting fails until 00:00 UTC; the board is unaffected (it
+  reads KV). The dashboard shows today's estimate.
+- Dashboard: `https://data.liveoutageradar.com/admin`. The page itself holds no
+  data. Data comes from `/admin/data`, which needs the `ADMIN_KEY` secret
+  (24+ characters) sent as a header, never in the URL. Wrong key = 401;
+  missing or short secret = locked (503).
+- Privacy page updated first (Nov 7, 2026) to describe exactly this.
 
 ## Sample mode (the default)
 

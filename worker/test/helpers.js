@@ -16,7 +16,8 @@ export const URLS = {
   },
   groq: {
     feed: "https://groqstatus.com/api/v2/components.json",
-    probe: "https://console.groq.com/",
+    probe: "https://api.groq.com/openai/v1/models",
+    site: "https://console.groq.com/",
   },
   claude: {
     feed: "https://status.claude.com/api/v2/summary.json",
@@ -136,7 +137,8 @@ export function healthyRoutes() {
     [URLS.openai.probe]: unauthorized,
     [URLS.mistral.probe]: unauthorized,
     [URLS.perplexity.probe]: unauthorized,
-    [URLS.groq.probe]: () => html("<html><title>GroqCloud</title></html>"),
+    [URLS.groq.probe]: unauthorized,
+    [URLS.groq.site]: () => html("<html><title>GroqCloud</title></html>"),
     [URLS.claude.feed]: () => json(statuspage("none")),
     [URLS.cohere.feed]: () => json(statuspage("none")),
     [URLS.huggingface.feed]: () => json(betterstack("operational")),

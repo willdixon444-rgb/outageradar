@@ -9,7 +9,10 @@
 //   - One malformed service cannot stop the others from updating.
 //   - Polling pauses in background tabs and after 20 idle minutes.
 // Data source: the OutageRadar checker Worker (worker/checker.js in the repo).
+// Page-view and link-click counts live in ./ping.js (daily totals only).
 // This file must stay ASCII-only.
+
+import "./ping.js";
 
 export const DATA_URL = "https://data.liveoutageradar.com/status.json";
 const STALE_AFTER_SEC = 15 * 60;
@@ -141,6 +144,61 @@ export function describeProbe(probe) {
   return { text: "Our check: " + text, code };
 }
 
+// ---------- incident line (v1.6) ----------
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const INCIDENT_WORDS = {
+  degraded: "degraded",
+  partial_outage: "partial outage",
+  major_outage: "major outage",
+  signals_disagree: "our check failed (not confirmed by the provider)",
+  check_failed: "our check failed (no provider feed)",
+};
+
+function utcDate(ms) {
+  const d = new Date(ms);
+  return MONTHS[d.getUTCMonth()] + " " + d.getUTCDate();
+}
+
+function agoText(ms) {
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return min + " min ago";
+  const h = Math.floor(min / 60);
+  if (h < 48) return h + " h ago";
+  return Math.floor(h / 24) + " days ago";
+}
+
+function durationText(minutes) {
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return m + " min";
+  const h = Math.floor(m / 60);
+  if (h >= 48) return Math.floor(h / 24) + " days";
+  return h + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+}
+
+// nowMs must come from the server clock (served_at_utc + time since the data
+// arrived), never the visitor's clock. Without it, the line shows the date.
+export function describeIncidents(incidents, nowMs) {
+  if (!incidents || typeof incidents !== "object") return "";
+  const since = Date.parse(incidents.since_utc);
+  if (!Number.isFinite(since)) return "";
+  const last = incidents.last;
+  if (last === null) return "No incidents logged since " + utcDate(since);
+  if (!last || typeof last !== "object" || !INCIDENT_WORDS[last.worst]) return "";
+  const start = Date.parse(last.started_utc);
+  if (!Number.isFinite(start)) return "";
+  const haveNow = Number.isFinite(nowMs);
+  if (last.ended_utc === null) {
+    const so = haveNow && nowMs >= start ? " (" + durationText((nowMs - start) / 60000) + " so far)" : "";
+    return "Current incident since " + hhmmUtc(last.started_utc) + so;
+  }
+  const end = Date.parse(last.ended_utc);
+  if (!Number.isFinite(end)) return "";
+  const when = haveNow ? agoText(Math.max(0, nowMs - end)) : utcDate(end);
+  return "Last incident " + when + ": " + INCIDENT_WORDS[last.worst] + ", " + durationText(Number(last.minutes) || 0);
+}
+
 function shellModel(entry, order, badgeKey) {
   const word = badgeKey === "checking" ? "checking\u2026" : "unknown";
   return {
@@ -152,10 +210,11 @@ function shellModel(entry, order, badgeKey) {
     official: entry.nofeed ? describeOfficial(null, false) : "Official status: " + word,
     probe: { text: "Our check: " + word, code: "" },
     note: "",
+    history: "",
   };
 }
 
-function serviceModel(raw, entry, order) {
+function serviceModel(raw, entry, order, nowMs) {
   const hasFeed = !(raw.official && /no official public feed/i.test(String(raw.official.note || "")));
   const badge = badgeFor(BADGES[raw.overall] ? raw.overall : "unknown");
   if (typeof raw.official !== "object" || raw.official === null) throw new Error("bad official");
@@ -169,6 +228,7 @@ function serviceModel(raw, entry, order) {
     official: describeOfficial(raw.official, hasFeed),
     probe: describeProbe(raw.probe),
     note: NOTES[badge.key] || "",
+    history: describeIncidents(raw.incidents, nowMs),
   };
 }
 
@@ -215,11 +275,13 @@ export function buildView(data, opts = {}) {
     };
   }
 
+  const servedMs = Date.parse(data.served_at_utc);
+  const nowMs = Number.isFinite(servedMs) ? servedMs + elapsedSec * 1000 : NaN;
   const services = entries.map((e, i) => {
     const raw = byId.get(e.id);
     if (!raw) return shellModel(e, i, "unknown");
     try {
-      return serviceModel(raw, e, i);
+      return serviceModel(raw, e, i, nowMs);
     } catch (err) {
       return shellModel(e, i, "unknown");
     }
@@ -373,6 +435,14 @@ function startBoard() {
         const note = li.querySelector(".note");
         note.textContent = m.note;
         note.hidden = !m.note;
+        let hist = li.querySelector(".hist");
+        if (!hist) {
+          hist = document.createElement("p");
+          hist.className = "hist";
+          li.appendChild(hist);
+        }
+        hist.textContent = m.history || "";
+        hist.hidden = !m.history;
         if (list.children[i] !== li) list.insertBefore(li, list.children[i] || null);
         paintBlip(m);
       } catch (err) {

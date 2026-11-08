@@ -43,7 +43,8 @@ test("probe result is still shown in sample mode", async () => {
   assert.equal(svc(body, "openai").probe.status, "reachable");
   assert.equal(svc(body, "openai").probe.label, "API server answering (our check)");
   assert.equal(svc(body, "groq").probe.status, "reachable");
-  assert.equal(svc(body, "groq").probe.label, "Site reachable (HTTP 200)");
+  assert.equal(svc(body, "groq").probe.label, "API server answering (our check)");
+  assert.equal(svc(body, "groq").probe.http_status, 401);
 });
 
 test("raw samples are saved once and announced once in the health channel", async () => {
@@ -150,12 +151,22 @@ test("an unexpected 4xx on an API probe is unknown, not answering", async () => 
   assert.equal(svc(body, "openai").probe.status, "unknown");
 });
 
-test("a site probe does not treat 401 as reachable", async () => {
-  setup({ [URLS.groq.probe]: () => html("login", 401) });
+test("groq's API probe counts 401 as answering but an unexpected 404 as unknown (v1.6)", async () => {
+  setup({ [URLS.groq.probe]: () => json({ error: "not found" }, 404) });
   const env = makeEnv(memoryKV());
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
   assert.equal(svc(body, "groq").probe.status, "unknown");
+});
+
+test("groq's old website address is still saved once as a sample (v1.6)", async () => {
+  setup();
+  const kv = memoryKV();
+  await runOnce(worker, makeEnv(kv));
+  const key = [...kv.store.keys()].find((k) => k.startsWith("samples:"));
+  const saved = JSON.parse(kv.store.get(key));
+  assert.ok(saved.feeds.some((f) => f.url === URLS.groq.site && f.http_status === 200));
+  assert.ok(saved.probes.some((p) => p.service === "groq" && p.url === URLS.groq.probe));
 });
 
 test("a challenge on an API probe is unknown even with an expected code", async () => {
@@ -508,7 +519,7 @@ test("CORS preflight answers 204", async () => {
 test("unknown paths are 404 and data responses are noindex", async () => {
   setup();
   const env = makeEnv(memoryKV());
-  const res = await worker.fetch(new Request("https://data.liveoutageradar.com/admin"), env, ctx);
+  const res = await worker.fetch(new Request("https://data.liveoutageradar.com/nope"), env, ctx);
   assert.equal(res.status, 404);
   const { res: s } = await getStatus(worker, env);
   assert.equal(s.headers.get("x-robots-tag"), "noindex");
