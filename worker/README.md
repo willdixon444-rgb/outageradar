@@ -27,12 +27,19 @@ This folder is NOT public: Render only publishes `site/`.
 - Stored inside `state:v1` (keys `incidents` and `incident_since`), which is
   written every run anyway: no extra KV writes. Last 20 per service; finished
   incidents older than 90 days are dropped. Damaged entries are discarded.
-- Opens on the first run that sees the problem; closes on the first run that
-  sees Operational / Up again. Unknown or maintenance never closes it.
-  Times are when our checker saw the change (runs are 5 minutes apart).
+- Opens on the first run that sees the problem. Closes after TWO healthy runs
+  in a row (v1.6.1), with the end time set to the first healthy run, so a
+  flapping service stays one incident. Unknown or maintenance never closes it
+  and restarts the healthy count. Times are when our checker saw the change
+  (runs are 5 minutes apart).
+- Stall limit (v1.6.1): an open incident that sees only Unknown/maintenance
+  for 2 hours is closed at the last time we saw the problem, flagged
+  `end_confirmed: false`, with one "INCIDENT LOG" message in outage-health.
+  The board says "about N min (end not confirmed)". If the problem shows
+  again, a new incident opens.
 - `status.json`: each service has `incidents: { since_utc, last }` (`null`
   for services not approved). `last` = `{ started_utc, ended_utc (null while
-  ongoing), worst, kind, minutes }`. The board shows "Last incident ...",
+  ongoing), worst, kind, minutes, end_confirmed }`. The board shows "Last incident ...",
   "Current incident since ..." or "No incidents logged since <date>".
 
 ## Traffic counts and private dashboard (v1.5, Nov 7, 2026)

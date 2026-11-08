@@ -65,17 +65,20 @@ test("an official outage opens an incident at once and shows it as ongoing", asy
   const body = await step();
   assert.deepEqual(inc(body, "openai").last, {
     started_utc: "2026-11-08T12:05:00Z", ended_utc: null, worst: "major_outage", kind: "official", minutes: 0,
+    end_confirmed: true,
   });
 });
 
-test("recovery closes the incident with its length", async () => {
+test("recovery closes the incident after two healthy checks, ended at the first (v1.6.1)", async () => {
   await step();
   openai = "major";
   await step();
   await step();
   await step();
   openai = "none";
-  const body = await step();
+  let body = await step();
+  assert.equal(inc(body, "openai").last.ended_utc, null, "one healthy check is not enough");
+  body = await step();
   const last = inc(body, "openai").last;
   assert.equal(last.started_utc, "2026-11-08T12:05:00Z");
   assert.equal(last.ended_utc, "2026-11-08T12:20:00Z");
@@ -111,6 +114,7 @@ test("unknown in the middle keeps the incident open: no recovery we cannot see",
   body = await step();
   assert.equal(inc(body, "openai").last.ended_utc, null);
   openai = "none";
+  await step();
   body = await step();
   assert.equal(inc(body, "openai").last.ended_utc, "2026-11-08T12:15:00Z");
 });
@@ -158,6 +162,7 @@ test("the log keeps the 20 newest incidents per service", async () => {
     await step();
     openai = "none";
     await step();
+    await step();
   }
   const list = saved().openai;
   assert.equal(list.length, 20);
@@ -168,6 +173,7 @@ test("finished incidents older than 90 days are dropped", async () => {
   openai = "minor";
   await step();
   openai = "none";
+  await step();
   await step();
   assert.equal(saved().openai.length, 1);
   clk.advance(91 * 24 * 60);
@@ -192,7 +198,8 @@ test("the log adds no extra storage writes", async () => {
   await step();
   openai = "none";
   await step();
-  assert.equal(kv.writes - before, 2, "one state write per run, nothing more");
+  await step();
+  assert.equal(kv.writes - before, 3, "one state write per run, nothing more");
 });
 
 test("a damaged saved log is reset instead of breaking the run", async () => {
@@ -206,4 +213,94 @@ test("a damaged saved log is reset instead of breaking the run", async () => {
   assert.equal(inc(body, "openai").last.worst, "major_outage");
   assert.equal(inc(body, "claude").last, null);
   assert.equal(body.stale, false);
+});
+
+// ---------- v1.6.1: AG review fixes ----------
+
+test("flapping stays one incident: a healthy blip between failures does not close it", async () => {
+  openai = "minor";
+  await step();            // 12:00 opens
+  openai = "none";
+  await step();            // 12:05 healthy once
+  openai = "minor";
+  await step();            // 12:10 bad again
+  openai = "none";
+  await step();            // 12:15 healthy once
+  let body = await step(); // 12:20 healthy twice: closes at 12:15
+  const list = saved().openai;
+  assert.equal(list.length, 1, "one incident, not three blips");
+  body = inc(body, "openai").last;
+  assert.equal(body.started_utc, "2026-11-08T12:00:00Z");
+  assert.equal(body.ended_utc, "2026-11-08T12:15:00Z");
+  assert.equal(body.minutes, 15);
+});
+
+test("unknown between two healthy checks restarts the healthy count", async () => {
+  openai = "critical";
+  await step();            // 12:00 opens
+  openai = "none";
+  await step();            // 12:05 healthy once
+  openai = "broken";
+  await step();            // 12:10 unknown
+  openai = "none";
+  let body = await step(); // 12:15 healthy once again
+  assert.equal(inc(body, "openai").last.ended_utc, null);
+  body = await step();     // 12:20 healthy twice
+  assert.equal(inc(body, "openai").last.ended_utc, "2026-11-08T12:15:00Z");
+});
+
+test("an incident stuck on unknown for 2 hours closes as end not confirmed, with one health message", async () => {
+  openai = "critical";
+  await step();            // 12:00 opens
+  await step();            // 12:05 still bad (last bad seen)
+  openai = "broken";
+  let body;
+  for (let i = 0; i < 24; i++) body = await step(); // 12:10 .. 14:05 unknown
+  assert.equal(inc(body, "openai").last.ended_utc, null, "not yet 2 hours");
+  body = await step();     // 14:10: unknown since 12:10 = 2 hours
+  const last = inc(body, "openai").last;
+  assert.equal(last.ended_utc, "2026-11-08T12:05:00Z", "ends at the last time we saw the problem");
+  assert.equal(last.end_confirmed, false);
+  assert.equal(last.minutes, 5);
+  const msgs = net.discord.filter((p) => p.url === env.DISCORD_HEALTH_WEBHOOK && /INCIDENT LOG/.test(p.body.content));
+  assert.equal(msgs.length, 1);
+  assert.match(msgs[0].body.content, /ChatGPT \/ OpenAI|OpenAI/);
+  assert.match(msgs[0].body.content, /end not confirmed/);
+  await step();
+  await step();
+  assert.equal(net.discord.filter((p) => p.url === env.DISCORD_HEALTH_WEBHOOK && /INCIDENT LOG/.test(p.body.content)).length, 1,
+    "said once, not every run");
+});
+
+test("after a stalled close, the problem coming back opens a new incident", async () => {
+  openai = "critical";
+  await step();
+  openai = "broken";
+  for (let i = 0; i < 26; i++) await step();
+  openai = "critical";
+  const body = await step();
+  assert.equal(saved().openai.length, 2);
+  assert.equal(inc(body, "openai").last.ended_utc, null);
+  assert.equal(inc(body, "openai").last.end_confirmed, true);
+});
+
+test("maintenance during an incident counts toward the 2-hour limit like unknown", async () => {
+  openai = "critical";
+  await step();
+  openai = "maintenance";
+  let body;
+  for (let i = 0; i < 25; i++) body = await step();
+  assert.equal(inc(body, "openai").last.end_confirmed, false);
+});
+
+test("logs saved by v1.6.0 (without the new fields) keep working", async () => {
+  await step();
+  const state = JSON.parse(kv.store.get("state:v1"));
+  state.incidents.openai = [{ start_ms: Date.parse("2026-11-08T11:00:00Z"), end_ms: null, worst: "degraded", kind: "official" }];
+  kv.store.set("state:v1", JSON.stringify(state));
+  openai = "none";
+  await step();
+  const body = await step();
+  assert.equal(inc(body, "openai").last.ended_utc, "2026-11-08T12:05:00Z");
+  assert.equal(inc(body, "openai").last.end_confirmed, true);
 });

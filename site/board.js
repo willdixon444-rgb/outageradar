@@ -171,6 +171,7 @@ function agoText(ms) {
 
 function durationText(minutes) {
   const m = Math.max(0, Math.round(minutes));
+  if (m < 5) return "under 5 min"; // checks are 5 minutes apart
   if (m < 60) return m + " min";
   const h = Math.floor(m / 60);
   if (h >= 48) return Math.floor(h / 24) + " days";
@@ -196,7 +197,13 @@ export function describeIncidents(incidents, nowMs) {
   const end = Date.parse(last.ended_utc);
   if (!Number.isFinite(end)) return "";
   const when = haveNow ? agoText(Math.max(0, nowMs - end)) : utcDate(end);
-  return "Last incident " + when + ": " + INCIDENT_WORDS[last.worst] + ", " + durationText(Number(last.minutes) || 0);
+  const length = durationText(Number(last.minutes) || 0);
+  // v1.6.1: closed after 2 hours with no clear signal; the end is our last sighting.
+  if (last.end_confirmed === false) {
+    return "Last incident " + when + ": " + INCIDENT_WORDS[last.worst] + ", " +
+      (length.startsWith("under") ? length : "about " + length) + " (end not confirmed)";
+  }
+  return "Last incident " + when + ": " + INCIDENT_WORDS[last.worst] + ", " + length;
 }
 
 function shellModel(entry, order, badgeKey) {

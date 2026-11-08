@@ -67,3 +67,23 @@ test("stale or missing data shows no incident line", () => {
   const view = buildView(null, { state: "loading" });
   assert.ok(view.services.every((s) => s.history === ""));
 });
+
+// ---------- v1.6.1 ----------
+
+test("an incident closed without a confirmed end says so and gives an approximate length", () => {
+  const d = describeIncidents(ended({ end_confirmed: false, minutes: 40 }), NOW);
+  assert.equal(d, "Last incident 3 days ago: major outage, about 40 min (end not confirmed)");
+});
+
+test("data from v1.6.0 without end_confirmed reads as confirmed", () => {
+  const x = ended();
+  delete x.last.end_confirmed;
+  assert.equal(describeIncidents(x, NOW), "Last incident 3 days ago: major outage, 42 min");
+});
+
+test("very short lengths read as under 5 minutes, never 0 min", () => {
+  assert.match(describeIncidents(ended({ end_confirmed: false, minutes: 0 }), NOW), /major outage, under 5 min \(end not confirmed\)$/);
+  assert.doesNotMatch(describeIncidents(ended({ end_confirmed: false, minutes: 0 }), NOW), /\b0 min/);
+  const ongoing = describeIncidents(ended({ ended_utc: null, minutes: 0 }), Date.parse("2026-11-08T13:01:00Z"));
+  assert.equal(ongoing, "Current incident since 13:00 UTC (under 5 min so far)");
+});

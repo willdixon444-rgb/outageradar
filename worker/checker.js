@@ -38,7 +38,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.6.0";
+const VERSION = "1.6.1";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -610,10 +610,16 @@ async function collectSamples(probes) {
 // state seen, and whether the provider confirmed it ("official") or only our
 // check saw it ("our_check"). Kept inside state:v1 (already written every
 // run), so it costs no extra KV writes. Times are when our checker first saw
-// the change (runs are 5 minutes apart). Unknown never closes an incident.
+// the change (runs are 5 minutes apart).
+// v1.6.1 (AG review): an incident closes only after TWO healthy checks in a
+// row (end = the first one), so a flapping service stays one incident. If an
+// open incident sees only Unknown or maintenance for 2 hours, it is closed at
+// the last time we saw the problem and flagged end_confirmed: false (one
+// health message), so a dead feed can't leave it "ongoing" for weeks.
 
 const INCIDENT_KEEP = 20;
 const INCIDENT_KEEP_MS = 90 * 24 * 60 * MIN;
+const INCIDENT_STALL_MS = 2 * 60 * MIN;
 const OFFICIAL_INCIDENT_STATES = ["degraded", "partial_outage", "major_outage"];
 const CHECK_INCIDENT_STATES = ["signals_disagree", "check_failed"];
 const INCIDENT_RANK = {
@@ -639,26 +645,55 @@ function cleanIncidentLog(state) {
   return { incidents, since: sinceOut };
 }
 
+function closeIncident(x, endMs, confirmed) {
+  x.end_ms = endMs;
+  x.end_confirmed = confirmed;
+  delete x.good_since_ms;
+  delete x.unknown_since_ms;
+  delete x.last_bad_ms;
+}
+
+// Returns { list, stalled }: stalled is the incident closed as "end not
+// confirmed" on this run (for the one health message), else null.
 function updateIncidents(list, overall, now) {
   const open = list.length && list[list.length - 1].end_ms === null ? list[list.length - 1] : null;
   const official = OFFICIAL_INCIDENT_STATES.includes(overall);
   const ours = CHECK_INCIDENT_STATES.includes(overall);
+  let stalled = null;
   if (official || ours) {
     if (!open) {
-      list.push({ start_ms: now, end_ms: null, worst: overall, kind: official ? "official" : "our_check" });
-    } else if (official && open.kind !== "official") {
-      // The provider has now confirmed it: from here on the official worst counts.
-      open.kind = "official";
-      open.worst = overall;
-    } else if (official || open.kind === "our_check") {
-      if ((INCIDENT_RANK[overall] || 0) > (INCIDENT_RANK[open.worst] || 0)) open.worst = overall;
+      list.push({
+        start_ms: now, end_ms: null, worst: overall, kind: official ? "official" : "our_check",
+        last_bad_ms: now, good_since_ms: null, unknown_since_ms: null,
+      });
+    } else {
+      if (official && open.kind !== "official") {
+        // The provider has now confirmed it: from here on the official worst counts.
+        open.kind = "official";
+        open.worst = overall;
+      } else if (official || open.kind === "our_check") {
+        if ((INCIDENT_RANK[overall] || 0) > (INCIDENT_RANK[open.worst] || 0)) open.worst = overall;
+      }
+      open.last_bad_ms = now;
+      open.good_since_ms = null;
+      open.unknown_since_ms = null;
     }
   } else if (open && GOOD_STATES.includes(overall)) {
-    open.end_ms = now;
+    open.unknown_since_ms = null;
+    if (typeof open.good_since_ms === "number") closeIncident(open, open.good_since_ms, true);
+    else open.good_since_ms = now;
+  } else if (open) {
+    // Unknown or maintenance: never proof of recovery, and it breaks a healthy streak.
+    open.good_since_ms = null;
+    if (typeof open.unknown_since_ms !== "number") {
+      open.unknown_since_ms = now;
+    } else if (now - open.unknown_since_ms >= INCIDENT_STALL_MS) {
+      closeIncident(open, typeof open.last_bad_ms === "number" ? open.last_bad_ms : open.start_ms, false);
+      stalled = open;
+    }
   }
-  // Unknown or maintenance: leave any open incident open.
   const kept = list.filter((x) => x.end_ms === null || now - x.end_ms <= INCIDENT_KEEP_MS);
-  return kept.slice(-INCIDENT_KEEP);
+  return { list: kept.slice(-INCIDENT_KEEP), stalled };
 }
 
 function publicIncidents(list, sinceMs, now) {
@@ -672,6 +707,7 @@ function publicIncidents(list, sinceMs, now) {
       worst: last.worst,
       kind: last.kind,
       minutes: Math.max(0, Math.round(((last.end_ms === null ? now : last.end_ms) - last.start_ms) / MIN)),
+      end_confirmed: last.end_confirmed !== false,
     } : null,
   };
 }
@@ -809,7 +845,14 @@ async function runCheck(env) {
     let incidents = null;
     if (isApproved) {
       if (typeof log.since[service.id] !== "number") log.since[service.id] = now;
-      log.incidents[service.id] = updateIncidents(log.incidents[service.id], overall, now);
+      const result = updateIncidents(log.incidents[service.id], overall, now);
+      log.incidents[service.id] = result.list;
+      if (result.stalled) {
+        await postDiscord(env.DISCORD_HEALTH_WEBHOOK, EMOJI.tool + " **INCIDENT LOG** " + service.name +
+          ": no clear status for 2 hours, so the incident that started " + humanTime(result.stalled.start_ms) +
+          " (worst: " + (LABELS[result.stalled.worst] || result.stalled.worst) +
+          ") is closed as end not confirmed. A new incident opens if the problem shows again. " + humanTime(now));
+      }
       incidents = publicIncidents(log.incidents[service.id], log.since[service.id], now);
     }
 
@@ -1419,9 +1462,25 @@ function adminApp() {
     show(el, !!text);
   }
 
-  function flag(cc) {
-    if (!/^[A-Z]{2}$/.test(cc) || cc === "XX") return "";
-    return String.fromCodePoint(0x1F1E6 + cc.charCodeAt(0) - 65, 0x1F1E6 + cc.charCodeAt(1) - 65) + " ";
+  // Full country names read on every device (Windows can't draw flag emoji).
+  var regionNames = null;
+  try { regionNames = new Intl.DisplayNames(["en"], { type: "region" }); } catch (e) { regionNames = null; }
+  function countryLabel(cc) {
+    if (cc === "XX") return "Unknown";
+    if (cc === "T1") return "Tor network (T1)";
+    var name = "";
+    try { name = regionNames && /^[A-Z]{2}$/.test(cc) ? regionNames.of(cc) : ""; } catch (e) { name = ""; }
+    return name && name !== cc ? name + " (" + cc + ")" : cc;
+  }
+
+  // Top of the chart: the next of 1, 2, 4, 6, 8, 10 (x10^n) at or above the
+  // highest bar, so the halfway line is always a whole number.
+  function chartTop(max) {
+    if (max <= 1) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(max)));
+    var steps = [1, 2, 4, 6, 8, 10];
+    for (var i = 0; i < steps.length; i += 1) if (steps[i] * p >= max) return steps[i] * p;
+    return 10 * p;
   }
 
   function sourceLabel(s) {
@@ -1469,15 +1528,14 @@ function adminApp() {
     var W = Math.max(280, Math.round(box.clientWidth || 640)), H = 200, padL = 34, padB = 22, padT = 8;
     var max = 1;
     series.forEach(function (d) { max = Math.max(max, d.human + d.bot); });
-    var step = Math.pow(10, Math.floor(Math.log10(max)));
-    var top = Math.ceil(max / step) * step;
+    var top = chartTop(max);
     var svg = document.createElementNS(NS, "svg");
     svg.setAttribute("viewBox", "0 0 " + W + " " + H);
     svg.setAttribute("role", "img");
     svg.setAttribute("aria-label", "Page views per day");
     var plotH = H - padB - padT;
     var y = function (v) { return padT + plotH - (v / top) * plotH; };
-    [0, 0.5, 1].forEach(function (f) {
+    (top === 1 ? [0, 1] : [0, 0.5, 1]).forEach(function (f) {
       var gy = y(top * f);
       var line = document.createElementNS(NS, "line");
       line.setAttribute("x1", padL); line.setAttribute("x2", W);
@@ -1541,7 +1599,7 @@ function adminApp() {
     fillList("engines", data.engines, function (e) { return e.engine; }, "No search visits yet.");
     fillList("pages", data.pages, function (p) { return p.page; }, "No visits yet.");
     fillList("links", data.links, function (l) { return l.link === "email" ? "Email link" : l.link; }, "No clicks yet.");
-    fillList("countries", data.countries, function (c) { return flag(c.country) + (c.country === "XX" ? "Unknown" : c.country); }, "No visits yet.");
+    fillList("countries", data.countries, function (c) { return countryLabel(c.country); }, "No visits yet.");
     var tb = $("days");
     tb.textContent = "";
     data.series.slice().reverse().forEach(function (d, i) {
