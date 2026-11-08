@@ -40,7 +40,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.7.0";
+const VERSION = "1.8.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -425,10 +425,15 @@ const CHALLENGE_MARKERS = [/just a moment/i, /challenge-platform/i, /cf-chl/i, /
 async function checkProbe(service) {
   const checkedAt = Date.now();
   try {
+    // v1.8.0: time from sending the request to the reply's first bytes. In
+    // Workers the clock moves forward across network waits, so this measures
+    // the round trip from Cloudflare to the provider's API server.
+    const t0 = Date.now();
     const res = await fetchWithTimeout(service.probe, {
       headers: { "user-agent": USER_AGENT, accept: "text/html" },
       redirect: "follow",
     }, FETCH_TIMEOUT_MS);
+    const ms = Math.max(0, Date.now() - t0);
     const code = res.status;
     const headers = {
       server: res.headers.get("server") || "",
@@ -437,31 +442,31 @@ async function checkProbe(service) {
     };
     if (headers["cf-mitigated"]) {
       discardBody(res);
-      return { result: "blocked", code, reason: "challenge page", checkedAt, headers, peek: "" };
+      return { result: "blocked", ms, code, reason: "challenge page", checkedAt, headers, peek: "" };
     }
     if ((service.probe_ok || []).includes(code)) {
       discardBody(res);
-      return { result: "ok", code, reason: "", checkedAt, headers, peek: "" };
+      return { result: "ok", ms, code, reason: "", checkedAt, headers, peek: "" };
     }
     if (code === 403 || code === 429) {
       discardBody(res);
-      return { result: "blocked", code, reason: "blocked (HTTP " + code + ")", checkedAt, headers, peek: "" };
+      return { result: "blocked", ms, code, reason: "blocked (HTTP " + code + ")", checkedAt, headers, peek: "" };
     }
     if (code >= 500) {
       discardBody(res);
-      return { result: "fail", code, reason: "HTTP " + code, checkedAt, headers, peek: "" };
+      return { result: "fail", ms, code, reason: "HTTP " + code, checkedAt, headers, peek: "" };
     }
     if (code >= 200 && code < 300) {
       const peek = await peekBody(res, PROBE_PEEK_CHARS);
       if (CHALLENGE_MARKERS.some((re) => re.test(peek))) {
-        return { result: "blocked", code, reason: "challenge page", checkedAt, headers, peek };
+        return { result: "blocked", ms, code, reason: "challenge page", checkedAt, headers, peek };
       }
-      return { result: "ok", code, reason: "", checkedAt, headers, peek };
+      return { result: "ok", ms, code, reason: "", checkedAt, headers, peek };
     }
     discardBody(res);
-    return { result: "odd", code, reason: "unexpected HTTP " + code, checkedAt, headers, peek: "" };
+    return { result: "odd", ms, code, reason: "unexpected HTTP " + code, checkedAt, headers, peek: "" };
   } catch (err) {
-    return { result: "fail", code: 0, reason: describeError(err), checkedAt, headers: {}, peek: "" };
+    return { result: "fail", ms: null, code: 0, reason: describeError(err), checkedAt, headers: {}, peek: "" };
   }
 }
 
@@ -604,6 +609,47 @@ async function collectSamples(probes) {
     first_chars: probes[i].peek,
   }));
   return { saved_at_utc: iso(Date.now()), version: VERSION, feeds, probes: probeSamples };
+}
+
+// ---------- latency summary (v1.8.0) ----------
+//
+// Per service and UTC day: number of answered checks, total, fastest, slowest
+// and a spread across LATENCY_BUCKETS (under 250 ms, 500, 1000, 2000, 5000,
+// and slower). Kept 30 days inside state:v1 (no extra writes) so a normal
+// range can be measured before anything is ever labelled "slow".
+
+const LATENCY_BUCKETS = [250, 500, 1000, 2000, 5000];
+const LATENCY_KEEP_DAYS = 30;
+
+function validLatencyDay(x) {
+  return x && typeof x === "object" && typeof x.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.day) &&
+    [x.n, x.sum, x.min, x.max].every((v) => typeof v === "number" && Number.isFinite(v)) &&
+    Array.isArray(x.b) && x.b.length === LATENCY_BUCKETS.length + 1 && x.b.every((v) => typeof v === "number");
+}
+
+function cleanLatency(state) {
+  const raw = state.latency && typeof state.latency === "object" ? state.latency : {};
+  const out = {};
+  for (const s of SERVICES) out[s.id] = Array.isArray(raw[s.id]) ? raw[s.id].filter(validLatencyDay) : [];
+  return out;
+}
+
+function addLatency(list, ms, now) {
+  if (!Number.isFinite(ms)) return list;
+  const day = new Date(now).toISOString().slice(0, 10);
+  let today = list.length && list[list.length - 1].day === day ? list[list.length - 1] : null;
+  if (!today) {
+    today = { day, n: 0, sum: 0, min: ms, max: ms, b: new Array(LATENCY_BUCKETS.length + 1).fill(0) };
+    list.push(today);
+  }
+  today.n += 1;
+  today.sum += ms;
+  today.min = Math.min(today.min, ms);
+  today.max = Math.max(today.max, ms);
+  let i = LATENCY_BUCKETS.findIndex((limit) => ms < limit);
+  if (i === -1) i = LATENCY_BUCKETS.length;
+  today.b[i] += 1;
+  return list.slice(-LATENCY_KEEP_DAYS);
 }
 
 // ---------- incident log (v1.6) ----------
@@ -784,6 +830,7 @@ async function runCheck(env) {
   const now = Date.now();
   const publicServices = [];
   const log = cleanIncidentLog(state);
+  const latency = cleanLatency(state);
 
   for (let i = 0; i < SERVICES.length; i++) {
     const service = SERVICES[i];
@@ -879,6 +926,8 @@ async function runCheck(env) {
       incidents = publicIncidents(log.incidents[service.id], log.since[service.id], now);
     }
 
+    if (probe.result === "ok") latency[service.id] = addLatency(latency[service.id], Math.round(probe.ms), now);
+
     st.last_official = official;
     st.last_probe = probeStatus;
     st.feed_preview = feed.status;
@@ -901,6 +950,7 @@ async function runCheck(env) {
         status: probeStatus,
         checked_at_utc: iso(probe.checkedAt),
         http_status: probe.code || null,
+        latency_ms: probe.result === "ok" && Number.isFinite(probe.ms) ? Math.round(probe.ms) : null,
         note: probe.reason,
       },
       incidents,
@@ -909,6 +959,7 @@ async function runCheck(env) {
 
   state.incidents = log.incidents;
   state.incident_since = log.since;
+  state.latency = latency;
 
   state.schema = 1;
   state.version = VERSION;

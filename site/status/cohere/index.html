@@ -183,7 +183,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
   <section class="sec about" aria-labelledby="h-how">
     <h2 id="h-how">How OutageRadar checks Cohere</h2>
     <p><strong>Official status</strong> is what Cohere publishes on <a href="https://status.cohere.com">its own status page</a>, read every five minutes.</p>
-    <p><strong>Our check</strong> is OutageRadar asking Cohere&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions.</p>
+    <p><strong>Our check</strong> is OutageRadar asking Cohere&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies.</p>
     <p>An incident is logged when the official status shows degraded performance or an outage, or when our check fails twice in a row. It ends after two healthy checks in a row. Times are when our checker saw the change, within five minutes.</p>
   </section>
 

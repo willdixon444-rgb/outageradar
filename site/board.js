@@ -131,11 +131,18 @@ export function describeOfficial(official, hasFeed) {
   return "Official status: " + word + (when ? " (checked " + when + ")" : "");
 }
 
+// v1.8.0: how long the check took to get an answer. Shown only for a normal
+// answer and a sensible number; under a second in ms, otherwise in seconds.
+function latencyText(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0 || ms >= 60000) return "";
+  return " in " + (ms < 1000 ? Math.round(ms) + " ms" : (Math.round(ms / 100) / 10).toFixed(1) + " s");
+}
+
 export function describeProbe(probe) {
   if (!probe || typeof probe !== "object") return { text: "Our check: couldn't check right now", code: "" };
   const api = /api/i.test(String(probe.label || ""));
   let text;
-  if (probe.status === "reachable") text = api ? "API server responding" : "Website reachable";
+  if (probe.status === "reachable") text = (api ? "API server responding" : "Website reachable") + latencyText(probe.latency_ms);
   else if (probe.status === "unreachable") text = api ? "API server not responding" : "Website not reachable";
   else text = "couldn't check right now";
   let code = Number.isInteger(probe.http_status) ? "HTTP " + probe.http_status : "";

@@ -18,6 +18,19 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Latency (v1.8.0, Nov 8, 2026)
+
+- Each API check is timed from sending the request to the reply's first
+  bytes (in Workers the clock advances across network waits). `status.json`
+  probe field `latency_ms`: a whole number of ms when the check got a normal
+  answer, otherwise `null`. The board shows "API server responding in 312 ms"
+  (1 s and over in seconds). It is the round trip from Cloudflare to the API
+  server, not the speed of AI replies.
+- Baseline: `state:v1` key `latency` keeps, per service and UTC day, the
+  count, total, fastest, slowest and a spread (under 250 / 500 / 1000 / 2000 /
+  5000 ms / slower) for 30 days. No extra writes. Not public yet. Nothing is
+  labelled "slow" until a normal range per service has been measured.
+
 ## History pages and /incidents.json (v1.7.0, Nov 8, 2026)
 
 - `GET /incidents.json`: every approved service's incident log, newest first:

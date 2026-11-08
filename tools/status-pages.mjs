@@ -97,8 +97,8 @@ export function renderServicePage(s, all = SHELL) {
     ? "No public status feed from the provider. Reachability checked by OutageRadar."
     : "Official status: checking&hellip;";
   const howParas = s.nofeed
-    ? "<p>" + esc(n.full) + " publishes no public status feed. OutageRadar asks its API server for a reply every five minutes; a reply, even &ldquo;needs a key&rdquo;, shows the server is up. It does not prove the AI is answering questions. This is shown as &ldquo;Up (our check only)&rdquo; with a dashed outline, never as an official all-clear.</p>"
-    : "<p><strong>Official status</strong> is what " + esc(n.full) + " publishes on <a href=\"" + esc(s.status_page) + "\">its own status page</a>, read every five minutes.</p>\n    <p><strong>Our check</strong> is OutageRadar asking " + esc(n.full) + "&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions.</p>";
+    ? "<p>" + esc(n.full) + " publishes no public status feed. OutageRadar asks its API server for a reply every five minutes; a reply, even &ldquo;needs a key&rdquo;, shows the server is up. It does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies. This is shown as &ldquo;Up (our check only)&rdquo; with a dashed outline, never as an official all-clear.</p>"
+    : "<p><strong>Official status</strong> is what " + esc(n.full) + " publishes on <a href=\"" + esc(s.status_page) + "\">its own status page</a>, read every five minutes.</p>\n    <p><strong>Our check</strong> is OutageRadar asking " + esc(n.full) + "&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies.</p>";
 
   return `<!doctype html>
 <html lang="en">

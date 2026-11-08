@@ -182,7 +182,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 
   <section class="sec about" aria-labelledby="h-how">
     <h2 id="h-how">How OutageRadar checks Gemini</h2>
-    <p>Gemini publishes no public status feed. OutageRadar asks its API server for a reply every five minutes; a reply, even &ldquo;needs a key&rdquo;, shows the server is up. It does not prove the AI is answering questions. This is shown as &ldquo;Up (our check only)&rdquo; with a dashed outline, never as an official all-clear.</p>
+    <p>Gemini publishes no public status feed. OutageRadar asks its API server for a reply every five minutes; a reply, even &ldquo;needs a key&rdquo;, shows the server is up. It does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies. This is shown as &ldquo;Up (our check only)&rdquo; with a dashed outline, never as an official all-clear.</p>
     <p>An incident is logged when the official status shows degraded performance or an outage, or when our check fails twice in a row. It ends after two healthy checks in a row. Times are when our checker saw the change, within five minutes.</p>
   </section>
 
