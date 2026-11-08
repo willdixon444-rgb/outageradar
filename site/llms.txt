@@ -1,0 +1,31 @@
+# OutageRadar
+
+> Live status board for ten AI services (ChatGPT/OpenAI, Claude, Gemini, Grok/xAI, Mistral, Perplexity, DeepSeek, Cohere, Groq, Hugging Face). Each service shows its official status feed plus OutageRadar's own independent check of its API server, every 5 minutes, and a log of recent incidents. OutageRadar is independent and not affiliated with any service listed.
+
+How to read it: "Official status" is what the provider publishes. "Our check" is OutageRadar asking the provider's API server for a reply; a reply (even "needs a key") means the server is up, not that the AI is answering. Gemini and DeepSeek publish no status feed, so only our check is shown for them, marked "our check only". When data is older than 15 minutes, every service shows Unknown rather than a guess. All times are UTC.
+
+## Pages
+
+- [Live board, all services](https://liveoutageradar.com/): current status of all ten services
+- [Is ChatGPT down?](https://liveoutageradar.com/status/openai/): OpenAI status and outage history
+- [Is Claude down?](https://liveoutageradar.com/status/claude/): Claude status and outage history
+- [Is Gemini down?](https://liveoutageradar.com/status/gemini/): Gemini status and outage history
+- [Is Grok down?](https://liveoutageradar.com/status/xai/): xAI status and outage history
+- [Is Mistral down?](https://liveoutageradar.com/status/mistral/): Mistral status and outage history
+- [Is Perplexity down?](https://liveoutageradar.com/status/perplexity/): Perplexity status and outage history
+- [Is DeepSeek down?](https://liveoutageradar.com/status/deepseek/): DeepSeek status and outage history
+- [Is Cohere down?](https://liveoutageradar.com/status/cohere/): Cohere status and outage history
+- [Is Groq down?](https://liveoutageradar.com/status/groq/): Groq status and outage history
+- [Is Hugging Face down?](https://liveoutageradar.com/status/huggingface/): Hugging Face status and outage history
+
+## Data
+
+- https://data.liveoutageradar.com/status.json: current status of every service (overall, official status, our check, last incident). Refreshed every 5 minutes.
+- https://data.liveoutageradar.com/incidents.json: each service's incident log, newest first (start, end, worst state, whether the provider confirmed it). Logging started November 8, 2026.
+
+## Notes
+
+- Incident times are when OutageRadar's checker saw the change (within 5 minutes), not the provider's own timestamps.
+- An incident marked "our check only" was not confirmed by the provider's status page.
+- Privacy: https://liveoutageradar.com/privacy.html
+- Contact: contact@liveoutageradar.com

@@ -81,7 +81,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .list{list-style:none;margin:0;padding:0}
 .row{display:grid;grid-template-columns:15.5rem minmax(0,1fr);column-gap:1.25rem;
   padding:1rem 0 1rem 1rem;border-bottom:1px solid var(--line);border-left:3px solid var(--unk)}
-.row .pill{grid-row:1 / span 4;align-self:start;justify-self:start}
+.row .pill{grid-row:1 / span 5;align-self:start;justify-self:start}
 .name{margin:0 0 .2rem;font-size:1.15rem;font-weight:650}
 .name a{text-decoration:none}
 .name a:hover{text-decoration:underline}
@@ -89,6 +89,8 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .probe .pc{opacity:.85;font-size:.85rem}
 .note{margin-top:.35rem;color:var(--text)}
 .hist{margin:.35rem 0 0;color:var(--muted);font-size:.85rem;max-width:70ch}
+.hist .hl{color:var(--muted);text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+.hist .hl:hover{color:var(--text)}
 
 .pill{display:inline-flex;align-items:center;gap:.45rem;padding:.3rem .7rem;border-radius:999px;
   background:var(--pill);border:1.5px solid currentColor;font-weight:650;font-size:.92rem;white-space:nowrap}
@@ -179,34 +181,34 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
   <ul class="list" id="services">
     <li class="row s-checking" data-id="openai"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.openai.com">ChatGPT / OpenAI</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/openai/">ChatGPT / OpenAI outage history</a></p></li>
     <li class="row s-checking" data-id="claude"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.claude.com">Claude</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/claude/">Claude outage history</a></p></li>
     <li class="row s-checking" data-id="gemini"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://aistudio.google.com/status">Gemini</a></h2>
-      <p class="official">No public status feed from the provider. Reachability checked by OutageRadar.</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">No public status feed from the provider. Reachability checked by OutageRadar.</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/gemini/">Gemini outage history</a></p></li>
     <li class="row s-checking" data-id="xai"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.x.ai">Grok / xAI</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/xai/">Grok / xAI outage history</a></p></li>
     <li class="row s-checking" data-id="mistral"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.mistral.ai">Mistral</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/mistral/">Mistral outage history</a></p></li>
     <li class="row s-checking" data-id="perplexity"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.perplexity.com">Perplexity</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/perplexity/">Perplexity outage history</a></p></li>
     <li class="row s-checking" data-id="deepseek"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.deepseek.com">DeepSeek</a></h2>
-      <p class="official">No public status feed from the provider. Reachability checked by OutageRadar.</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">No public status feed from the provider. Reachability checked by OutageRadar.</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/deepseek/">DeepSeek outage history</a></p></li>
     <li class="row s-checking" data-id="cohere"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.cohere.com">Cohere</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/cohere/">Cohere outage history</a></p></li>
     <li class="row s-checking" data-id="groq"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://groqstatus.com">Groq</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/groq/">Groq outage history</a></p></li>
     <li class="row s-checking" data-id="huggingface"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.huggingface.co">Hugging Face</a></h2>
-      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p></li>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/huggingface/">Hugging Face outage history</a></p></li>
   </ul>
 
   <aside class="partner" aria-label="Related tool">

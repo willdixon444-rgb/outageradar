@@ -16,10 +16,10 @@ import "./ping.js";
 
 export const DATA_URL = "https://data.liveoutageradar.com/status.json";
 const STALE_AFTER_SEC = 15 * 60;
-const POLL_MS = 2 * 60 * 1000;
+export const POLL_MS = 2 * 60 * 1000;
 const IDLE_PAUSE_MS = 20 * 60 * 1000;
 const TICK_MS = 30 * 1000;
-const FETCH_TIMEOUT_MS = 10000;
+export const FETCH_TIMEOUT_MS = 10000;
 
 // The fixed list the page is built with (also written into index.html so
 // search engines and link previews see real text before any script runs).
@@ -98,7 +98,7 @@ export function badgeFor(key) {
   return { key: k, label: BADGES[k].label, icon: BADGES[k].icon, cls: "s-" + k, color: COLORS.states[k] };
 }
 
-function hhmmUtc(isoText) {
+export function hhmmUtc(isoText) {
   const t = Date.parse(isoText || "");
   if (Number.isNaN(t)) return "";
   const d = new Date(t);
@@ -155,7 +155,7 @@ const INCIDENT_WORDS = {
   check_failed: "our check failed (no provider feed)",
 };
 
-function utcDate(ms) {
+export function utcDate(ms) {
   const d = new Date(ms);
   return MONTHS[d.getUTCMonth()] + " " + d.getUTCDate();
 }
@@ -169,7 +169,7 @@ function agoText(ms) {
   return Math.floor(h / 24) + " days ago";
 }
 
-function durationText(minutes) {
+export function durationText(minutes) {
   const m = Math.max(0, Math.round(minutes));
   if (m < 5) return "under 5 min"; // checks are 5 minutes apart
   if (m < 60) return m + " min";
@@ -385,7 +385,8 @@ function startBoard() {
       li.dataset.id = model.id;
       li.innerHTML = '<span class="pill"><span class="pi" aria-hidden="true"></span><span class="pl"></span></span>' +
         '<h2 class="name"><a></a></h2><p class="official"></p><p class="probe"><span class="pt"></span> <span class="pc"></span></p>' +
-        '<p class="note"></p>';
+        '<p class="note"></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/' +
+        encodeURIComponent(model.id) + '/"></a></p>';
       list.appendChild(li);
     }
     return li;
@@ -442,14 +443,23 @@ function startBoard() {
         const note = li.querySelector(".note");
         note.textContent = m.note;
         note.hidden = !m.note;
+        // History line + link to the service's page (v1.7.0). The link is in
+        // index.html for search engines; rows added by script get one too.
         let hist = li.querySelector(".hist");
         if (!hist) {
           hist = document.createElement("p");
           hist.className = "hist";
           li.appendChild(hist);
         }
-        hist.textContent = m.history || "";
-        hist.hidden = !m.history;
+        let ht = hist.querySelector(".ht");
+        if (!ht) {
+          ht = document.createElement("span");
+          ht.className = "ht";
+          hist.insertBefore(ht, hist.firstChild);
+        }
+        ht.textContent = m.history ? m.history + "." : "";
+        const hl = hist.querySelector(".hl");
+        if (hl && !hl.textContent) hl.textContent = m.name + " outage history";
         if (list.children[i] !== li) list.insertBefore(li, list.children[i] || null);
         paintBlip(m);
       } catch (err) {
@@ -529,7 +539,9 @@ function startBoard() {
   setInterval(render, TICK_MS);
 }
 
+// Starts only on the board page; the history pages import helpers from here.
 if (typeof window !== "undefined" && typeof document !== "undefined") {
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startBoard);
-  else startBoard();
+  const go = () => { if (document.getElementById("services")) startBoard(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+  else go();
 }

@@ -11,6 +11,8 @@
 //   GET /health       "ok" if the last run saved within 15 minutes, else 503
 //                     (v1.6: each service also carries "incidents": when the
 //                     log started and the last incident, see incident log)
+//   GET /incidents.json  each approved service's incident log, newest first
+//                     (v1.7.0, for the /status/<id>/ history pages)
 //   POST /v, /c       page-view / link-click pings from our site (daily totals
 //                     in D1; no IP, user agent, cookie or ID stored)
 //   GET /admin        private traffic dashboard (data needs ADMIN_KEY)
@@ -38,7 +40,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.6.1";
+const VERSION = "1.7.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -696,20 +698,41 @@ function updateIncidents(list, overall, now) {
   return { list: kept.slice(-INCIDENT_KEEP), stalled };
 }
 
+function publicIncident(x, now) {
+  return {
+    started_utc: iso(x.start_ms),
+    ended_utc: x.end_ms === null ? null : iso(x.end_ms),
+    worst: x.worst,
+    kind: x.kind,
+    minutes: Math.max(0, Math.round(((x.end_ms === null ? now : x.end_ms) - x.start_ms) / MIN)),
+    end_confirmed: x.end_confirmed !== false,
+  };
+}
+
 function publicIncidents(list, sinceMs, now) {
   if (typeof sinceMs !== "number") return null;
   const last = list.length ? list[list.length - 1] : null;
-  return {
-    since_utc: iso(sinceMs),
-    last: last ? {
-      started_utc: iso(last.start_ms),
-      ended_utc: last.end_ms === null ? null : iso(last.end_ms),
-      worst: last.worst,
-      kind: last.kind,
-      minutes: Math.max(0, Math.round(((last.end_ms === null ? now : last.end_ms) - last.start_ms) / MIN)),
-      end_confirmed: last.end_confirmed !== false,
-    } : null,
-  };
+  return { since_utc: iso(sinceMs), last: last ? publicIncident(last, now) : null };
+}
+
+// /incidents.json (v1.7.0): every approved service's log, newest first, for
+// the per-service history pages. Read-only.
+function buildIncidentsPublic(state, now) {
+  const services = [];
+  if (state && typeof state === "object") {
+    const log = cleanIncidentLog(state);
+    for (const s of SERVICES) {
+      if (typeof log.since[s.id] !== "number") continue;
+      services.push({
+        id: s.id,
+        name: s.name,
+        status_page: s.status_page,
+        since_utc: iso(log.since[s.id]),
+        incidents: log.incidents[s.id].slice().reverse().map((x) => publicIncident(x, now)),
+      });
+    }
+  }
+  return { schema: 1, served_at_utc: iso(now), services };
 }
 
 async function runCheck(env) {
@@ -1702,6 +1725,16 @@ async function handleFetch(request, env) {
       console.warn("status read failed");
     }
     return respond(JSON.stringify(buildPublic(state, Date.now())), 200, cors);
+  }
+
+  if (url.pathname === "/incidents.json") {
+    let state = null;
+    try {
+      if (env && env.KV) state = await cachedState(env.KV);
+    } catch (err) {
+      console.warn("history read failed");
+    }
+    return respond(JSON.stringify(buildIncidentsPublic(state, Date.now())), 200, cors);
   }
 
   if (url.pathname === "/health") {
