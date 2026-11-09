@@ -68,6 +68,10 @@ const BADGES = {
   checking: { label: "Checking\u2026", icon: "\u2026" },
 };
 
+// v1.9.0: states where a service is having problems; the board then links to
+// the "switch to a backup" section of its history page.
+export const TROUBLE_KEYS = ["degraded", "partial_outage", "major_outage", "signals_disagree", "check_failed"];
+
 const OFFICIAL_WORDS = {
   operational: "Operational",
   degraded: "Degraded",
@@ -225,6 +229,7 @@ function shellModel(entry, order, badgeKey) {
     probe: { text: "Our check: " + word, code: "" },
     note: "",
     history: "",
+    troubled: false,
   };
 }
 
@@ -243,6 +248,7 @@ function serviceModel(raw, entry, order, nowMs) {
     probe: describeProbe(raw.probe),
     note: NOTES[badge.key] || "",
     history: describeIncidents(raw.incidents, nowMs),
+    troubled: TROUBLE_KEYS.includes(badge.key),
   };
 }
 
@@ -467,6 +473,22 @@ function startBoard() {
         ht.textContent = m.history ? m.history + "." : "";
         const hl = hist.querySelector(".hl");
         if (hl && !hl.textContent) hl.textContent = m.name + " outage history";
+        // v1.9.0: during problems, offer the backup section of the service's page.
+        let fo = li.querySelector(".fo");
+        if (m.troubled) {
+          if (!fo) {
+            fo = document.createElement("p");
+            fo.className = "fo";
+            const a = document.createElement("a");
+            a.href = "/status/" + encodeURIComponent(m.id) + "/#backup";
+            fo.appendChild(a);
+            li.appendChild(fo);
+          }
+          fo.firstChild.textContent = m.name + " having problems? Switch to a backup \u2192";
+          fo.hidden = false;
+        } else if (fo) {
+          fo.hidden = true;
+        }
         if (list.children[i] !== li) list.insertBefore(li, list.children[i] || null);
         paintBlip(m);
       } catch (err) {

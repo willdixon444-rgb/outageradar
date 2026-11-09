@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { SHELL } from "../site/board.js";
+import { backupsFor, pythonSnippet, jsSnippet } from "./backups.mjs";
 
 const SITE_URL = "https://liveoutageradar.com";
 // The day the incident log started (checker v1.6.0 deploy). The page script
@@ -28,6 +29,11 @@ export function pageNames(s) {
 
 function esc(text) {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Code blocks only need & < > escaped; quotes stay readable in the source.
+function escCode(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function boardStyles() {
@@ -56,8 +62,53 @@ const PAGE_STYLES = `
 .history .inote{grid-column:1 / -1;font-size:.85rem;color:var(--dis)}
 .others ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem}
 .others a{color:var(--muted)}
+.backup .intro{margin:0 0 .75rem}
+.backups{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.backups li{border-bottom:1px solid var(--line)}
+.backups li.is-bad summary .bn{text-decoration:line-through;color:var(--muted)}
+.backups summary{cursor:pointer;padding:.7rem 0;display:flex;flex-wrap:wrap;gap:.25rem .75rem;align-items:baseline}
+.backups summary:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.backups .bn{font-weight:600}
+.bs{font-size:.88rem;color:var(--muted)}
+.bs-ok{color:var(--op)}
+.bs-bad{color:var(--dis)}
+.bnote,.blinks{margin:0 0 .5rem;font-size:.9rem;color:var(--muted)}
+.lang{margin:.6rem 0 .25rem;font-size:.85rem;color:var(--muted)}
+.code{position:relative;margin:0 0 .75rem}
+.code pre{margin:0;padding:.75rem;padding-right:4.5rem;background:#04100b;border:1px solid var(--line);border-radius:8px;overflow-x:auto;font-size:.82rem;line-height:1.5}
+.code button.copy{position:absolute;top:.4rem;right:.4rem;font:inherit;font-size:.8rem;padding:.25rem .6rem;border-radius:6px;border:1px solid var(--line);background:#0f241a;color:var(--text);cursor:pointer}
+.code button.copy:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 @media (max-width:40rem){.history li{grid-template-columns:minmax(0,1fr) auto}.history .when{grid-column:1 / -1;order:3}}
 `;
+
+function backupSection(s, n) {
+  const items = backupsFor(s.id).map((b, i) => {
+    const py = "code-" + b.id + "-py";
+    const js = "code-" + b.id + "-js";
+    return '<li data-backup="' + b.id + '" data-status="' + (b.status || "") + '">\n' +
+      "      <details" + (i === 0 ? " open" : "") + ">\n" +
+      '        <summary><span class="bn">' + esc(b.name) + '</span> <span class="bs bs-unk">' +
+      (b.status ? "Checking&hellip;" : "Not tracked on OutageRadar yet") + "</span></summary>\n" +
+      (b.note ? '        <p class="bnote">' + esc(b.note) + "</p>\n" : "") +
+      '        <p class="blinks"><a href="' + esc(b.models) + '">' + esc(b.name) + "&rsquo;s current model list</a> &middot; " +
+      '<a href="' + esc(b.docs) + '">setup guide</a></p>\n' +
+      '        <p class="lang">Python</p>\n' +
+      '        <div class="code"><button class="copy" type="button" data-copy="' + py + '" hidden>Copy</button><pre><code id="' + py + '">' +
+      escCode(pythonSnippet(b)) + "</code></pre></div>\n" +
+      '        <p class="lang">JavaScript</p>\n' +
+      '        <div class="code"><button class="copy" type="button" data-copy="' + js + '" hidden>Copy</button><pre><code id="' + js + '">' +
+      escCode(jsSnippet(b)) + "</code></pre></div>\n" +
+      "      </details>\n    </li>";
+  }).join("\n    ");
+  return `<section class="sec backup" id="backup" aria-labelledby="h-backup">
+    <h2 id="h-backup">If ${esc(n.short)} is down: switch to a backup</h2>
+    <p class="intro">These AI APIs work with the official OpenAI library. Change the address and the key, pick a model from that provider&rsquo;s list, and you&rsquo;re running again. Each shows its live status, so you don&rsquo;t switch to one that&rsquo;s also down.</p>
+    <ul class="backups">
+    ${items}
+    </ul>
+    <p class="since">Test a backup in development before routing production traffic. Pick a model from a different company than the one that&rsquo;s down. Your code talks to the provider directly; OutageRadar never sees your key. For a full automatic fallback setup, see <a href="https://tokenmargin.dev" target="_blank" rel="noopener">TokenMargin</a>.</p>
+  </section>`;
+}
 
 export function renderServicePage(s, all = SHELL) {
   const n = pageNames(s);
@@ -151,6 +202,8 @@ ${PAGE_STYLES.trim()}
     <noscript><p>The history list needs JavaScript.</p></noscript>
     <p class="since">For incidents before that, and for ${esc(n.full)}&rsquo;s own explanations, see the <a href="${esc(s.status_page)}">official ${esc(n.full)} status page</a>.</p>
   </section>
+
+  ${backupSection(s, n)}
 
   <section class="sec about" aria-labelledby="h-how">
     <h2 id="h-how">How OutageRadar checks ${esc(n.full)}</h2>

@@ -6,7 +6,7 @@
 // Page-view counts: ./ping.js (loaded through board.js). ASCII-only file.
 
 import {
-  DATA_URL, SHELL, POLL_MS, FETCH_TIMEOUT_MS, buildView, liveState, pollDecision, durationText, utcDate,
+  DATA_URL, SHELL, POLL_MS, FETCH_TIMEOUT_MS, TROUBLE_KEYS, buildView, liveState, pollDecision, durationText, utcDate,
 } from "./board.js";
 
 export const HISTORY_URL = "https://data.liveoutageradar.com/incidents.json";
@@ -79,6 +79,38 @@ export function historyItems(entry, service) {
   };
 }
 
+// v1.9.0: live label for one backup in the "switch to a backup" section.
+// model: that service's model from buildView, or null if not monitored.
+export function backupState(model) {
+  if (!model || !model.badge) return { cls: "unk", text: "Not tracked on OutageRadar yet" };
+  const key = model.badge.key;
+  if (key === "operational") return { cls: "ok", text: "Operational right now" };
+  if (key === "check_ok") return { cls: "ok", text: "Up right now (our check only)" };
+  if (TROUBLE_KEYS.includes(key)) return { cls: "bad", text: "Also having problems (" + model.badge.label + "). Try another." };
+  return { cls: "unk", text: "Status unknown right now" };
+}
+
+function setupCopyButtons() {
+  for (const btn of document.querySelectorAll("button.copy[data-copy]")) {
+    btn.hidden = false;
+    btn.addEventListener("click", async () => {
+      const code = document.getElementById(btn.getAttribute("data-copy"));
+      if (!code) return;
+      let done = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(code.textContent);
+          done = true;
+        }
+      } catch (err) {
+        done = false;
+      }
+      btn.textContent = done ? "Copied" : "Select and copy";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+  }
+}
+
 async function getJson(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -128,6 +160,18 @@ function startPage(id) {
     const note = row.querySelector(".note");
     note.textContent = m.note;
     note.hidden = !m.note;
+    // Live status of each backup, from the same data (never the visitor's clock).
+    for (const li of document.querySelectorAll("[data-backup]")) {
+      const sid = li.getAttribute("data-status");
+      const bm = sid ? view.services.find((s) => s.id === sid) : null;
+      const st = backupState(sid ? bm : null);
+      const el = li.querySelector(".bs");
+      if (el) {
+        el.className = "bs bs-" + st.cls;
+        el.textContent = st.text;
+      }
+      li.classList.toggle("is-bad", st.cls === "bad");
+    }
   }
 
   function render() {
@@ -228,6 +272,7 @@ function startPage(id) {
     if (!document.hidden && performance.now() - lastFetch > 60 * 1000) { refresh(); loadHistory(); }
   });
 
+  setupCopyButtons();
   render();
   refresh();
   loadHistory();

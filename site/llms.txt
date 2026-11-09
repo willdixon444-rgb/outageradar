@@ -18,6 +18,8 @@ How to read it: "Official status" is what the provider publishes. "Our check" is
 - [Is Groq down?](https://liveoutageradar.com/status/groq/): Groq status and outage history
 - [Is Hugging Face down?](https://liveoutageradar.com/status/huggingface/): Hugging Face status and outage history
 
+Each service page also has an "If X is down: switch to a backup" section: OpenAI-library code for other providers (OpenRouter, Groq, Gemini, OpenAI, Claude, xAI, DeepSeek), each with its live status. No referral links.
+
 ## Data
 
 - https://data.liveoutageradar.com/status.json: current status of every service (overall, official status, our check, last incident). Refreshed every 5 minutes.
