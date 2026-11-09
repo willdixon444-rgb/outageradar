@@ -18,6 +18,24 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Hidden sample mode for new services (v1.10.0, Nov 9, 2026)
+
+- Six services are checked quietly with `listed: false`: OpenRouter, Together
+  AI, Fireworks AI, DeepInfra, GitHub Copilot, Microsoft Copilot. They never
+  appear in status.json, /incidents.json or Discord, and never count as
+  approved even if added to APPROVED_MAPPINGS by mistake.
+- The first run of v1.10.0 saves samples: each one's status page (to see the
+  platform), one candidate feed, and what its API/site check answered.
+  Download them from the dashboard (data.liveoutageradar.com/admin, button
+  "Download checker samples"; needs ADMIN_KEY) instead of digging in KV.
+- After review, a later release sets each feed mapping, lists the services,
+  and adds them to the board and history pages.
+- Subrequest budget (free plan: 50 per run, counting fetches, each redirect,
+  KV reads/writes and D1 calls): sample run measured at 39, normal run at 27.
+  Sample URLs only use the room left after reserves for KV (4), D1 (2),
+  Discord (6) and redirects (4). Old samples for long-approved services
+  (Groq, Cohere, Hugging Face) were retired to make room.
+
 ## Latency (v1.8.0, Nov 8, 2026)
 
 - Each API check is timed from sending the request to the reply's first

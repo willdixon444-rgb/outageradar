@@ -40,7 +40,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.8.0";
+const VERSION = "1.10.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -125,7 +125,7 @@ const SERVICES = [
     // server, like the others. Groq documents GET /openai/v1/models with a
     // Bearer key; the no-key answer (expected 401) is confirmed by the
     // v1.6 sample. The old website address is kept as a one-time sample.
-    samples: ["https://groqstatus.com/api/v2/status.json", "https://console.groq.com/"],
+    samples: [], // v1.6 samples reviewed; cleared in v1.10.0 to save requests
     parser: "components",
     components: ["API", "Website"],
     probe: "https://api.groq.com/openai/v1/models",
@@ -153,7 +153,7 @@ const SERVICES = [
     name: "Cohere",
     status_page: "https://status.cohere.com",
     feed: "https://status.cohere.com/api/v2/summary.json",
-    samples: ["https://status.cohere.com/api/v2/status.json"],
+    samples: [], // reviewed; cleared in v1.10.0
     parser: "statuspage_indicator",
     probe: "https://api.cohere.com/v1/models",
     probe_ok: [401],
@@ -167,7 +167,7 @@ const SERVICES = [
     name: "Hugging Face",
     status_page: "https://status.huggingface.co",
     feed: "https://status.huggingface.co/index.json",
-    samples: ["https://status.huggingface.co/api/v2/summary.json"],
+    samples: [], // reviewed; cleared in v1.10.0
     parser: "betterstack",
     probe: "https://huggingface.co/api/whoami-v2",
     probe_ok: [401],
@@ -218,7 +218,108 @@ const SERVICES = [
     probe_label: API_LABEL,
     probe_words: "API server",
   },
+  // ---- Added in v1.10.0: HIDDEN sample mode (listed: false). ----
+  // Checked every run, but never in status.json, /incidents.json or Discord,
+  // and never treated as approved, until a later release reviews the real
+  // samples, sets the feed mapping and lists them. Status page URLs come from
+  // research on Nov 8, 2026 (status pages linked from each provider's site or
+  // reported by status aggregators). Platform notes are UNVERIFIED until the
+  // samples are read. Each saves the status page itself (shows the platform)
+  // plus at most one candidate feed, to stay inside the request budget.
+  {
+    // status.openrouter.ai (linked from openrouter.ai): platform UNVERIFIED.
+    id: "openrouter",
+    name: "OpenRouter",
+    listed: false,
+    status_page: "https://status.openrouter.ai",
+    feed: null,
+    samples: ["https://status.openrouter.ai/", "https://status.openrouter.ai/api/v2/summary.json"],
+    parser: "none",
+    probe: "https://openrouter.ai/api/v1/models",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // status.together.ai: platform UNVERIFIED (one source says Better Stack).
+    id: "together",
+    name: "Together AI",
+    listed: false,
+    status_page: "https://status.together.ai",
+    feed: null,
+    samples: ["https://status.together.ai/", "https://status.together.ai/index.json"],
+    parser: "none",
+    probe: "https://api.together.xyz/v1/models",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // status.fireworks.ai: platform UNVERIFIED (one source says incident.io).
+    id: "fireworks",
+    name: "Fireworks AI",
+    listed: false,
+    status_page: "https://status.fireworks.ai",
+    feed: null,
+    samples: ["https://status.fireworks.ai/", "https://status.fireworks.ai/api/v2/summary.json"],
+    parser: "none",
+    probe: "https://api.fireworks.ai/inference/v1/models",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // status.deepinfra.com: platform UNVERIFIED.
+    id: "deepinfra",
+    name: "DeepInfra",
+    listed: false,
+    status_page: "https://status.deepinfra.com",
+    feed: null,
+    samples: ["https://status.deepinfra.com/", "https://status.deepinfra.com/api/v2/summary.json"],
+    parser: "none",
+    probe: "https://api.deepinfra.com/v1/openai/models",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // GitHub's status page (Statuspage) has "Copilot" and "Copilot AI Model
+    // Providers" components (GitHub blog). How to combine them: from samples.
+    // The probe address is a CANDIDATE only; the sample shows what it answers.
+    id: "github-copilot",
+    name: "GitHub Copilot",
+    listed: false,
+    status_page: "https://www.githubstatus.com",
+    feed: null,
+    samples: ["https://www.githubstatus.com/api/v2/summary.json"],
+    parser: "none",
+    probe: "https://api.githubcopilot.com/models",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // Microsoft lists Copilot on status.cloud.microsoft; whether a
+    // machine-readable feed exists is UNVERIFIED (the page is sampled).
+    // The probe is the public website, which may block automated checks.
+    id: "microsoft-copilot",
+    name: "Microsoft Copilot",
+    listed: false,
+    status_page: "https://status.cloud.microsoft",
+    feed: null,
+    samples: ["https://status.cloud.microsoft/"],
+    parser: "none",
+    probe: "https://copilot.microsoft.com/",
+    probe_ok: [],
+    probe_label: SITE_LABEL,
+    probe_words: "site",
+  },
 ];
+
+// Services shown publicly (the board, status.json, /incidents.json, alerts).
+function isListed(service) {
+  return service.listed !== false;
+}
 
 const NO_FEED_NOTE = "No official public feed";
 
@@ -406,15 +507,26 @@ async function checkFeed(service) {
     const res = await fetchWithTimeout(service.feed, {
       headers: { "user-agent": USER_AGENT, accept: "application/json" },
     }, FETCH_TIMEOUT_MS);
+    const contentType = res.headers.get("content-type") || "";
     if (!res.ok) {
       discardBody(res);
-      return { ok: false, status: "unknown", reason: "HTTP " + res.status, checkedAt };
+      return {
+        ok: false, status: "unknown", reason: "HTTP " + res.status, checkedAt,
+        raw: { http_status: res.status, content_type: contentType, bytes: 0, body: "" },
+      };
     }
     const text = await res.text();
-    const parsed = parseFeed(service, text, res.headers.get("content-type"));
-    return { ...parsed, checkedAt };
+    const parsed = parseFeed(service, text, contentType);
+    // v1.10.0: keep a raw copy so a sample run never downloads the feed twice.
+    return {
+      ...parsed, checkedAt,
+      raw: { http_status: res.status, content_type: contentType, bytes: text.length, body: text.slice(0, SAMPLE_BODY_LIMIT) },
+    };
   } catch (err) {
-    return { ok: false, status: "unknown", reason: describeError(err), checkedAt };
+    return {
+      ok: false, status: "unknown", reason: describeError(err), checkedAt,
+      raw: { http_status: 0, error: describeError(err), bytes: 0, body: "" },
+    };
   }
 }
 
@@ -576,16 +688,31 @@ function isTopOfHour(ms) {
   return new Date(ms).getUTCMinutes() < 5;
 }
 
-async function collectSamples(probes) {
-  const urls = [];
-  for (const s of SERVICES) {
-    if (s.feed) urls.push({ service: s.id, url: s.feed });
-    for (const u of s.samples || []) urls.push({ service: s.id, url: u });
-  }
-  const feeds = await Promise.all(urls.map(async (item) => {
+// Free plan: 50 subrequests per run. Cloudflare counts every fetch (each
+// redirect step too) AND every KV read/write and D1 call. Sample runs only
+// fetch extra sample URLs into the room left after everything else.
+const SUBREQUEST_LIMIT = 50;
+const KV_RESERVE = 4;        // read state, read samples key, write samples, write state
+const D1_RESERVE = 2;        // daily count cleanup (one batch), with margin
+const DISCORD_RESERVE = 6;   // alerts + health messages in one run
+const REDIRECT_RESERVE = 4;  // redirects count as extra subrequests
+const FIXED_RESERVE = KV_RESERVE + D1_RESERVE + DISCORD_RESERVE + REDIRECT_RESERVE;
+
+async function collectSamples(feeds, probes) {
+  // Official feeds were already downloaded this run: reuse those copies.
+  const out = [];
+  SERVICES.forEach((s, i) => {
+    if (s.feed) out.push({ service: s.id, url: s.feed, ...(feeds[i] && feeds[i].raw ? feeds[i].raw : { http_status: 0, bytes: 0, body: "" }) });
+  });
+  const used = SERVICES.filter((s) => s.feed).length + SERVICES.length + FIXED_RESERVE;
+  const room = Math.max(0, SUBREQUEST_LIMIT - used);
+  const extra = [];
+  for (const s of SERVICES) for (const u of s.samples || []) extra.push({ service: s.id, url: u });
+  const fetched = await Promise.all(extra.map(async (item, n) => {
+    if (n >= room) return { ...item, http_status: 0, skipped: "request budget", bytes: 0, body: "" };
     try {
       const res = await fetchWithTimeout(item.url, {
-        headers: { "user-agent": USER_AGENT, accept: "application/json" },
+        headers: { "user-agent": USER_AGENT, accept: "application/json, text/html;q=0.8" },
       }, FETCH_TIMEOUT_MS);
       const text = await res.text();
       return {
@@ -599,16 +726,18 @@ async function collectSamples(probes) {
       return { ...item, http_status: 0, error: describeError(err), bytes: 0, body: "" };
     }
   }));
+  if (extra.length > room) console.warn("samples: " + (extra.length - room) + " skipped to stay within the request budget");
   const probeSamples = SERVICES.map((s, i) => ({
     service: s.id,
     url: s.probe,
     http_status: probes[i].code,
     result: probes[i].result,
     reason: probes[i].reason,
+    latency_ms: Number.isFinite(probes[i].ms) ? Math.round(probes[i].ms) : null,
     headers: probes[i].headers,
     first_chars: probes[i].peek,
   }));
-  return { saved_at_utc: iso(Date.now()), version: VERSION, feeds, probes: probeSamples };
+  return { saved_at_utc: iso(Date.now()), version: VERSION, feeds: out.concat(fetched), probes: probeSamples };
 }
 
 // ---------- latency summary (v1.8.0) ----------
@@ -809,7 +938,7 @@ async function runCheck(env) {
   try {
     const existing = await kv.get(SAMPLES_KEY);
     if (existing === null) {
-      const samples = await collectSamples(probes);
+      const samples = await collectSamples(feeds, probes);
       await kv.put(SAMPLES_KEY, JSON.stringify(samples));
       await postDiscord(env.DISCORD_HEALTH_WEBHOOK, EMOJI.sample + " **Samples saved** for " +
         samples.feeds.length + " feed URLs and " + samples.probes.length +
@@ -837,7 +966,8 @@ async function runCheck(env) {
     const feed = feeds[i];
     const probe = probes[i];
     const st = { ...freshServiceState(), ...(state.services[service.id] || {}) };
-    const isApproved = approved.has(service.id);
+    // Hidden services never count as approved, even if listed in APPROVED_MAPPINGS.
+    const isApproved = isListed(service) && approved.has(service.id);
 
     // Official signal.
     const official = isApproved && feed.ok ? feed.status : "unknown";
@@ -934,7 +1064,7 @@ async function runCheck(env) {
     st.feed_reason = feed.reason;
     state.services[service.id] = st;
 
-    publicServices.push({
+    if (isListed(service)) publicServices.push({
       id: service.id,
       name: service.name,
       status_page: service.status_page,
@@ -1349,12 +1479,43 @@ function buildAdminData(results, rangeDays, now) {
   };
 }
 
-async function handleAdminData(request, env, url) {
+// Returns null when the key is right, otherwise the error response to send.
+async function adminAuthError(request, env) {
   const expected = env && typeof env.ADMIN_KEY === "string" ? env.ADMIN_KEY : "";
   if (expected.length < ADMIN_KEY_MIN_LENGTH) return adminJson({ error: "admin_key_missing" }, 503);
   const auth = request.headers.get("authorization") || "";
   const given = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!given || !(await adminKeyMatches(given, expected))) return adminJson({ error: "wrong_key" }, 401);
+  return null;
+}
+
+// v1.10.0: the latest raw samples as a file, for reviewing new services.
+async function handleAdminSamples(request, env) {
+  const denied = await adminAuthError(request, env);
+  if (denied) return denied;
+  let text = null;
+  try {
+    text = env.KV ? await env.KV.get(SAMPLES_KEY) : null;
+  } catch (err) {
+    console.warn("samples read failed");
+    return adminJson({ error: "kv_error" }, 503);
+  }
+  if (!text) return adminJson({ error: "no_samples_yet" }, 404);
+  return new Response(text, {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "content-disposition": 'attachment; filename="outageradar-samples-v' + VERSION + '.json"',
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+async function handleAdminData(request, env, url) {
+  const denied = await adminAuthError(request, env);
+  if (denied) return denied;
   if (!env.DB) return adminJson({ error: "db_missing" }, 503);
 
   const asked = Number(url.searchParams.get("days"));
@@ -1509,6 +1670,7 @@ a{color:var(--op)}
   </section>
 
   <footer>
+    <p><button type="button" id="samplesBtn">Download checker samples</button> <span id="samplesMsg"></span><br>For reviewing new services: saves the latest raw feed and check samples as a file.</p>
     <p>Counts only: no IP addresses, cookies or IDs are stored. "Bots" means automated browsers that ran the page script; most crawlers never do. For Google search impressions, clicks and crawling, use <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Search Console</a>.</p>
   </footer>
 </main>
@@ -1740,6 +1902,32 @@ function adminApp() {
     b.addEventListener("click", function () { days = Number(b.getAttribute("data-days")); load(); });
   });
   $("refresh").addEventListener("click", load);
+  $("samplesBtn").addEventListener("click", function () {
+    if (!key) return;
+    $("samplesMsg").textContent = "Downloading\u2026";
+    fetch("/admin/samples", { headers: { authorization: "Bearer " + key }, cache: "no-store" })
+      .then(function (res) {
+        if (res.status === 404) throw new Error("No samples saved yet. They are saved on the first run after a new version is deployed.");
+        if (!res.ok) throw new Error("Download failed (HTTP " + res.status + ").");
+        var name = "outageradar-samples.json";
+        var cd = res.headers.get("content-disposition") || "";
+        var m = cd.match(/filename="([^"]+)"/);
+        if (m) name = m[1];
+        return res.blob().then(function (blob) { return { blob: blob, name: name }; });
+      })
+      .then(function (r) {
+        var url = URL.createObjectURL(r.blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = r.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+        $("samplesMsg").textContent = "Saved as " + r.name;
+      })
+      .catch(function (err) { $("samplesMsg").textContent = err.message; });
+  });
   var lastSeries = null;
   window.addEventListener("resize", function () { if (lastSeries) chart(lastSeries); });
   document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); });
@@ -1767,6 +1955,7 @@ async function handleFetch(request, env) {
     return adminPage(ADMIN_APP_JS, "text/javascript; charset=utf-8");
   }
   if (url.pathname === "/admin/data") return handleAdminData(request, env, url);
+  if (url.pathname === "/admin/samples") return handleAdminSamples(request, env);
 
   if (url.pathname === "/status.json") {
     let state = null;

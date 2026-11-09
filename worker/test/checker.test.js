@@ -159,13 +159,13 @@ test("groq's API probe counts 401 as answering but an unexpected 404 as unknown 
   assert.equal(svc(body, "groq").probe.status, "unknown");
 });
 
-test("groq's old website address is still saved once as a sample (v1.6)", async () => {
+test("groq's API check is in the samples; its old website sample was retired in v1.10.0", async () => {
   setup();
   const kv = memoryKV();
   await runOnce(worker, makeEnv(kv));
   const key = [...kv.store.keys()].find((k) => k.startsWith("samples:"));
   const saved = JSON.parse(kv.store.get(key));
-  assert.ok(saved.feeds.some((f) => f.url === URLS.groq.site && f.http_status === 200));
+  assert.ok(!saved.feeds.some((f) => f.url === URLS.groq.site), "retired sample not fetched");
   assert.ok(saved.probes.some((p) => p.service === "groq" && p.url === URLS.groq.probe));
 });
 
