@@ -41,7 +41,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.14.0";
+const VERSION = "1.15.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -645,6 +645,9 @@ function freshServiceState() {
     alert_state: null,
     alert_opened_ms: null,
     last_alert_ms: null,
+    // v1.15.0: degraded episodes, for subscribers who opted in.
+    minor_open: false,
+    last_minor_ms: null,
   };
 }
 
@@ -950,6 +953,316 @@ function buildIncidentsPublic(state, now) {
   return { schema: 1, served_at_utc: iso(now), services };
 }
 
+// ---------- Self-serve alerts (v1.15.0, Phase 1 pilot) ----------
+//
+// Visitors give a Discord or Slack webhook and pick services. We post ONE
+// confirmation message there; nothing else is sent until a person presses
+// Confirm on our page, which POSTs here. Link-preview bots open links with
+// GET, so a GET never confirms or unsubscribes. Every alert carries an
+// unsubscribe link (also a page with a button).
+// Secrets: ALERTS_ENC_KEY (base64 of 32 random bytes, AES-GCM key for the
+// stored webhooks) and ALERTS_SIGN_KEY (32+ characters, HMAC key for links
+// and the duplicate-lookup hash). Without both, the feature is off.
+// The 5-minute run only records events (one D1 batch). The every-minute
+// cron ("* * * * *") sends them, at most 40 messages a run, from a cursor.
+// Stored per sign-up: encrypted webhook, platform, services, the degraded
+// opt-in, confirmed flag, two timestamps. No IPs, emails or cookies.
+
+const ALERT_SEND_CRON = "* * * * *";
+const SUB_BATCH = 40;
+const CONFIRM_CAP_PER_HOUR = 30;
+const CONFIRM_REPEAT_MS = 24 * 60 * MIN;
+const PENDING_TTL_MS = 24 * 60 * MIN;
+const EVENT_MAX_AGE_MS = 6 * 60 * MIN;
+const ALERT_BODY_MAX = 2048;
+const HOOK_TIMEOUT_MS = 8000;
+
+const SUBS_SCHEMA = [
+  "CREATE TABLE IF NOT EXISTS alert_subs (id TEXT PRIMARY KEY, hook_hash TEXT NOT NULL UNIQUE, hook_enc TEXT NOT NULL, platform TEXT NOT NULL, services TEXT NOT NULL, minor INTEGER NOT NULL DEFAULT 0, confirmed INTEGER NOT NULL DEFAULT 0, created_ms INTEGER NOT NULL, confirm_sent_ms INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS alert_subs_sent ON alert_subs (confirm_sent_ms)",
+  "CREATE TABLE IF NOT EXISTS alert_events (id INTEGER PRIMARY KEY AUTOINCREMENT, service TEXT NOT NULL, kind TEXT NOT NULL, severity TEXT NOT NULL, state TEXT NOT NULL, created_ms INTEGER NOT NULL, cursor TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0)",
+];
+
+let subsSchemaFor = null; // the D1 binding the tables were last ensured on (per isolate)
+async function ensureSubsSchema(db) {
+  if (subsSchemaFor === db) return;
+  await db.batch(SUBS_SCHEMA.map((sql) => db.prepare(sql)));
+  subsSchemaFor = db;
+}
+
+const UTF8 = new TextEncoder();
+function b64(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+function unb64(text) {
+  const s = atob(text);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+const b64url = (bytes) => b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+let alertKeyCache = null;
+async function alertKeys(env) {
+  const enc = env && env.ALERTS_ENC_KEY;
+  const sign = env && env.ALERTS_SIGN_KEY;
+  if (typeof enc !== "string" || typeof sign !== "string" || sign.length < 32) return null;
+  if (alertKeyCache && alertKeyCache.enc === enc && alertKeyCache.sign === sign) return alertKeyCache.keys;
+  let raw;
+  try { raw = unb64(enc.trim()); } catch (err) { raw = null; }
+  if (!raw || raw.length !== 32) {
+    console.warn("ALERTS_ENC_KEY must be base64 of 32 bytes; alerts are off");
+    return null;
+  }
+  const keys = {
+    aes: await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]),
+    hmac: await crypto.subtle.importKey("raw", UTF8.encode(sign), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+  };
+  alertKeyCache = { enc, sign, keys };
+  return keys;
+}
+
+async function sealHook(keys, url) {
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // fresh for every encryption
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, keys.aes, UTF8.encode(url)));
+  return b64(iv) + ":" + b64(ct);
+}
+async function openHook(keys, sealed) {
+  try {
+    const [iv, ct] = String(sealed).split(":");
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, keys.aes, unb64(ct));
+    return new TextDecoder().decode(pt);
+  } catch (err) {
+    return null;
+  }
+}
+async function mac(keys, text) {
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", keys.hmac, UTF8.encode(text))));
+}
+async function linkToken(keys, purpose, id) {
+  return id + "." + await mac(keys, purpose + ":" + id);
+}
+async function readToken(keys, purpose, token) {
+  if (typeof token !== "string" || token.length > 200) return null;
+  const m = token.match(/^([a-f0-9]{32})\.([A-Za-z0-9_-]{20,})$/);
+  if (!m) return null;
+  const want = await mac(keys, purpose + ":" + m[1]);
+  if (want.length !== m[2].length) return null;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ m[2].charCodeAt(i);
+  return diff === 0 ? m[1] : null;
+}
+
+// Real webhook addresses only (host and path shape). The confirmation
+// message proves the webhook works, so lengths are not guessed.
+const DISCORD_HOOK = /^https:\/\/(?:discord\.com|discordapp\.com)\/api\/webhooks\/(\d{1,25})\/([A-Za-z0-9_-]{1,200})$/;
+const SLACK_HOOK = /^https:\/\/hooks\.slack\.com\/services\/([A-Z0-9]{1,40})\/([A-Z0-9]{1,40})\/([A-Za-z0-9]{1,100})$/;
+function parseHook(raw) {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  if (text.length > 300) return null;
+  let m = text.match(DISCORD_HOOK);
+  if (m) return { platform: "discord", url: "https://discord.com/api/webhooks/" + m[1] + "/" + m[2] };
+  m = text.match(SLACK_HOOK);
+  if (m) return { platform: "slack", url: text };
+  return null;
+}
+
+const SLACK_GONE = ["no_service", "channel_not_found", "channel_is_archived"];
+// Posts one message. Never throws, never logs the address.
+// gone: the platform says the webhook no longer exists (delete it).
+// later: rate limited or a server problem (try again next minute).
+async function postHook(platform, url, text) {
+  const body = platform === "discord"
+    ? { content: text, flags: 4, allowed_mentions: { parse: [] } } // 4 = no link previews
+    : { text, unfurl_links: false, unfurl_media: false };
+  try {
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }, HOOK_TIMEOUT_MS);
+    const status = res.status;
+    let reply = "";
+    if (platform === "slack" && !res.ok) reply = (await res.text()).trim().slice(0, 60);
+    else discardBody(res);
+    const gone = platform === "discord"
+      ? status === 401 || status === 403 || status === 404
+      : SLACK_GONE.includes(reply) || status === 404 || status === 410;
+    return { ok: res.ok, gone: !res.ok && gone, later: status === 429 || status >= 500 };
+  } catch (err) {
+    return { ok: false, gone: false, later: true };
+  }
+}
+
+function bold(platform, text) {
+  return platform === "discord" ? "**" + text + "**" : "*" + text + "*";
+}
+
+function alertLine(platform, ev, name) {
+  const who = bold(platform, name);
+  if (ev.kind === "end") return who.replace(name, name + ": recovered") + " (back to normal).";
+  const label = Object.prototype.hasOwnProperty.call(LABELS, ev.state) ? LABELS[ev.state] : "Problem";
+  if (ev.kind === "worse") return who.replace(name, name + ": now " + label) + ".";
+  return who.replace(name, name + ": " + label) + (ev.severity === "minor" ? " (minor)." : ".");
+}
+
+async function alertText(keys, platform, ev, subId) {
+  const service = SERVICES.find((s) => s.id === ev.service);
+  const name = service ? service.name : ev.service;
+  return "OutageRadar alert: " + alertLine(platform, ev, name) + "\n" +
+    "Details: " + SITE_ORIGIN + "/status/" + ev.service + "/\n" +
+    "Unsubscribe: " + SITE_ORIGIN + "/alerts/unsubscribe/#" + await linkToken(keys, "u", subId);
+}
+
+// Called by the 5-minute run with the events it saw (approved services only).
+async function recordAlertEvents(env, events, now) {
+  if (!events.length || !env || !env.DB) return;
+  try {
+    if (!(await alertKeys(env))) return;
+    await ensureSubsSchema(env.DB);
+    await env.DB.batch(events.map((e) => env.DB.prepare(
+      "INSERT INTO alert_events (service, kind, severity, state, created_ms) VALUES (?, ?, ?, ?, ?)",
+    ).bind(e.service, e.kind, e.severity, e.state, now)));
+  } catch (err) {
+    console.warn("alert events not recorded");
+  }
+}
+
+// The every-minute run: housekeeping, then send in batches.
+async function sendAlerts(env, now) {
+  const keys = await alertKeys(env);
+  if (!keys || !env.DB) return;
+  const db = env.DB;
+  await ensureSubsSchema(db);
+  await db.batch([
+    db.prepare("DELETE FROM alert_subs WHERE confirmed = 0 AND created_ms < ?").bind(now - PENDING_TTL_MS),
+    db.prepare("UPDATE alert_events SET done = 1 WHERE done = 0 AND created_ms < ?").bind(now - EVENT_MAX_AGE_MS),
+  ]);
+  let sent = 0;
+  while (sent < SUB_BATCH) {
+    const ev = await db.prepare("SELECT id, service, kind, severity, state, cursor FROM alert_events WHERE done = 0 ORDER BY id LIMIT 1").first();
+    if (!ev) return;
+    const want = SUB_BATCH - sent;
+    const minorOnly = ev.severity === "minor" ? " AND minor = 1" : "";
+    const { results } = await db.prepare(
+      "SELECT id, hook_enc, platform FROM alert_subs WHERE confirmed = 1 AND id > ? AND services LIKE ?" + minorOnly + " ORDER BY id LIMIT ?",
+    ).bind(ev.cursor, "%," + ev.service + ",%", want).all();
+    let cursor = ev.cursor;
+    for (const sub of results) {
+      const url = await openHook(keys, sub.hook_enc);
+      if (!url) { cursor = sub.id; continue; } // unreadable row: skip it
+      sent += 1;
+      const r = await postHook(sub.platform, url, await alertText(keys, sub.platform, ev, sub.id));
+      if (r.later) {
+        // Rate limited or their server is down: stop here, retry this one next minute.
+        await db.prepare("UPDATE alert_events SET cursor = ? WHERE id = ?").bind(cursor, ev.id).run();
+        return;
+      }
+      if (r.gone) await db.prepare("DELETE FROM alert_subs WHERE id = ?").bind(sub.id).run();
+      cursor = sub.id;
+    }
+    const finished = results.length < want;
+    await db.prepare("UPDATE alert_events SET cursor = ?, done = ? WHERE id = ?").bind(cursor, finished ? 1 : 0, ev.id).run();
+    if (!finished) return; // batch full; continue next minute
+  }
+}
+
+function alertCors(request) {
+  const origin = request.headers.get("origin");
+  const h = { vary: "Origin", "cache-control": "no-store" };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    h["access-control-allow-origin"] = origin;
+    h["access-control-allow-methods"] = "POST, OPTIONS";
+    h["access-control-max-age"] = "86400";
+  }
+  return h;
+}
+
+async function readAlertBody(request) {
+  const text = await request.text();
+  if (text.length > ALERT_BODY_MAX) return { error: 413 };
+  try {
+    const body = JSON.parse(text);
+    return body && typeof body === "object" ? { body } : { error: 400 };
+  } catch (err) {
+    return { error: 400 };
+  }
+}
+
+async function handleAlerts(request, env, action) {
+  const cors = alertCors(request);
+  const out = (obj, status = 200) => respond(JSON.stringify(obj), status, cors);
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...cors, "x-robots-tag": "noindex" } });
+  if (request.method !== "POST") return out({ error: "method_not_allowed" }, 405);
+  const origin = request.headers.get("origin");
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) return out({ error: "forbidden" }, 403);
+  const keys = await alertKeys(env);
+  if (!keys || !env.DB) return out({ error: "alerts_unavailable" }, 503);
+  const { body, error } = await readAlertBody(request);
+  if (error) return out({ error: error === 413 ? "too_large" : "bad_request" }, error);
+  const db = env.DB;
+  await ensureSubsSchema(db);
+  const now = Date.now();
+
+  if (action === "confirm" || action === "unsubscribe") {
+    const id = await readToken(keys, action === "confirm" ? "c" : "u", body.token);
+    if (!id) return out({ error: "link_invalid" }, 400);
+    if (action === "unsubscribe") {
+      await db.prepare("DELETE FROM alert_subs WHERE id = ?").bind(id).run();
+      return out({ ok: true }); // same answer whether or not it existed
+    }
+    const r = await db.prepare("UPDATE alert_subs SET confirmed = 1 WHERE id = ?").bind(id).run();
+    return r.meta && r.meta.changes ? out({ ok: true }) : out({ error: "link_expired" }, 404);
+  }
+
+  // subscribe
+  if (typeof body.company_name === "string" && body.company_name !== "") return out({ ok: true, status: "check_channel" }); // honeypot
+  const hook = parseHook(body.webhook);
+  if (!hook) return out({ error: "webhook_invalid" }, 400);
+  const picked = Array.isArray(body.services) ? [...new Set(body.services)] : null;
+  if (!picked || !picked.length || !picked.every((id) => typeof id === "string" && PUBLIC_IDS.has(id))) {
+    return out({ error: "services_invalid" }, 400);
+  }
+  const services = "," + SERVICES.filter((s) => picked.includes(s.id)).map((s) => s.id).join(",") + ",";
+  const minor = body.minor === true ? 1 : 0;
+  const hash = await mac(keys, "hook:" + hook.url);
+  const existing = await db.prepare("SELECT id, confirmed, confirm_sent_ms FROM alert_subs WHERE hook_hash = ?").bind(hash).first();
+  if (existing && (existing.confirmed || now - existing.confirm_sent_ms < CONFIRM_REPEAT_MS)) {
+    // Already confirmed, or a confirmation went out in the last 24 hours: update choices, send nothing.
+    await db.prepare("UPDATE alert_subs SET services = ?, minor = ? WHERE id = ?").bind(services, minor, existing.id).run();
+    return out({ ok: true, status: "check_channel" });
+  }
+  const recent = await db.prepare("SELECT COUNT(*) AS n FROM alert_subs WHERE confirm_sent_ms > ?").bind(now - 60 * MIN).first();
+  if (recent && recent.n >= CONFIRM_CAP_PER_HOUR) return out({ error: "busy" }, 429);
+  const id = existing ? existing.id : [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const sealed = await sealHook(keys, hook.url);
+  if (existing) {
+    await db.prepare("UPDATE alert_subs SET hook_enc = ?, services = ?, minor = ?, confirm_sent_ms = ? WHERE id = ?")
+      .bind(sealed, services, minor, now, id).run();
+  } else {
+    try {
+      await db.prepare("INSERT INTO alert_subs (id, hook_hash, hook_enc, platform, services, minor, confirmed, created_ms, confirm_sent_ms) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)")
+        .bind(id, hash, sealed, hook.platform, services, minor, now, now).run();
+    } catch (err) {
+      return out({ ok: true, status: "check_channel" }); // a parallel sign-up of the same webhook won
+    }
+  }
+  const names = SERVICES.filter((s) => services.includes("," + s.id + ",")).map((s) => s.name).join(", ");
+  const text = "Someone asked OutageRadar to post outage alerts in this channel for: " + names +
+    (minor ? " (including degraded performance)" : "") + ".\n" +
+    "To start them, open this page and press Confirm: " + SITE_ORIGIN + "/alerts/confirm/#" + await linkToken(keys, "c", id) + "\n" +
+    "If this wasn't you, ignore this message; nothing else will be sent.";
+  const r = await postHook(hook.platform, hook.url, text);
+  if (!r.ok) {
+    if (!existing) await db.prepare("DELETE FROM alert_subs WHERE id = ?").bind(id).run();
+    return r.later ? out({ error: "try_later" }, 503) : out({ error: "webhook_rejected" }, 400);
+  }
+  return out({ ok: true, status: "check_channel" });
+}
+
 // ---------- RSS feeds (v1.14.0) ----------
 //
 // GET /feed.xml (all services) and /feed/<id>.xml (one service): RSS 2.0,
@@ -1086,6 +1399,7 @@ async function runCheck(env) {
   const log = cleanIncidentLog(state);
   const latency = cleanLatency(state);
 
+  const alertEvents = []; // v1.15.0: for subscribers; saved after the loop
   for (let i = 0; i < SERVICES.length; i++) {
     const service = SERVICES[i];
     const feed = feeds[i];
@@ -1149,12 +1463,14 @@ async function runCheck(env) {
           st.alert_state = overall;
           st.alert_opened_ms = now;
           st.last_alert_ms = now;
+          alertEvents.push({ service: service.id, kind: "start", severity: "major", state: overall });
         }
       } else if (bad && st.alert_open && overall in SEVERITY && st.alert_state in SEVERITY &&
                  SEVERITY[overall] > SEVERITY[st.alert_state]) {
         if (await postDiscord(env.DISCORD_ALERTS_WEBHOOK, worseMessage(service, overall, probeStatus, now))) {
           st.alert_state = overall;
           st.last_alert_ms = now;
+          alertEvents.push({ service: service.id, kind: "worse", severity: "major", state: overall });
         }
       } else if (GOOD_STATES.includes(overall) && st.alert_open) {
         if (await postDiscord(env.DISCORD_ALERTS_WEBHOOK, recoveredMessage(service, st.alert_opened_ms, now))) {
@@ -1162,9 +1478,23 @@ async function runCheck(env) {
           st.alert_state = null;
           st.alert_opened_ms = null;
           st.last_alert_ms = now;
+          st.minor_open = false; // one "recovered" message covers both
+          alertEvents.push({ service: service.id, kind: "end", severity: "major", state: overall });
         }
       }
       // Unknown while an alert is open: say nothing. We do not claim recovery we cannot see.
+
+      // v1.15.0: degraded (minor) episodes, only for subscribers who opted in.
+      const minorCooling = typeof st.last_minor_ms === "number" && now - st.last_minor_ms < ALERT_COOLDOWN_MS;
+      if (overall === "degraded" && !st.alert_open && !st.minor_open && !minorCooling) {
+        st.minor_open = true;
+        st.last_minor_ms = now;
+        alertEvents.push({ service: service.id, kind: "start", severity: "minor", state: overall });
+      } else if (GOOD_STATES.includes(overall) && st.minor_open) {
+        st.minor_open = false;
+        st.last_minor_ms = now;
+        alertEvents.push({ service: service.id, kind: "end", severity: "minor", state: overall });
+      }
     }
 
     // Incident log: approved services only, like alerts.
@@ -1212,6 +1542,7 @@ async function runCheck(env) {
       incidents,
     });
   }
+  await recordAlertEvents(env, alertEvents, now);
 
   state.incidents = log.incidents;
   state.incident_since = log.since;
@@ -2069,6 +2400,10 @@ async function handleFetch(request, env) {
   const url = new URL(request.url);
   const cors = corsHeaders(request);
 
+  // v1.15.0: alert sign-up, confirm and unsubscribe (POST only; own CORS).
+  const alertAction = url.pathname.match(/^\/alerts\/(subscribe|confirm|unsubscribe)$/);
+  if (alertAction) return handleAlerts(request, env, alertAction[1]);
+
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: { ...cors, "x-robots-tag": "noindex" } });
   }
@@ -2144,6 +2479,15 @@ async function handleFetch(request, env) {
 
 export default {
   async scheduled(event, env, ctx) {
+    // v1.15.0: the every-minute trigger only sends subscriber alerts.
+    if (event && event.cron === ALERT_SEND_CRON) {
+      try {
+        await sendAlerts(env, Date.now());
+      } catch (err) {
+        console.error("alert sending failed: " + (err && err.name ? err.name : "error"));
+      }
+      return;
+    }
     try {
       await runCheck(env);
     } catch (err) {

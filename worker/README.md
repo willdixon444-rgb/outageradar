@@ -18,6 +18,37 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Self-serve Discord/Slack alerts, Phase 1 pilot (v1.15.0, Nov 10, 2026)
+
+- Off unless both secrets exist: `ALERTS_ENC_KEY` (base64 of 32 random bytes,
+  AES-GCM key for stored webhooks) and `ALERTS_SIGN_KEY` (32+ characters, HMAC
+  key for confirm/unsubscribe links and the duplicate-lookup hash). Uses the
+  existing D1 binding `DB`; tables `alert_subs` and `alert_events` create
+  themselves on first use.
+- `POST /alerts/subscribe | confirm | unsubscribe` (plain-text JSON body,
+  2 KB max, our site's origin only). GET never confirms or unsubscribes, so
+  Discord/Slack link-preview bots can't. Confirm/unsubscribe pages on the site
+  have a button that sends the POST. Honeypot field `company_name`.
+- Limits: one confirmation message per webhook per 24 h; at most 30
+  confirmation messages an hour in total; unconfirmed sign-ups deleted after
+  24 h; alerts older than 6 h dropped.
+- Webhooks: Discord or Slack addresses only (host and path shape). Encrypted
+  with a fresh random IV each time; duplicates found by a keyed hash.
+- Events: the 5-minute run records start / worse / recovered at the same
+  moments as the private alerts channel (same cool-down), plus degraded
+  start/end for subscribers who opted in. One D1 batch, only when there are
+  events and the feature is on.
+- Sending: a second cron trigger, `* * * * *`, on this Worker. It only sends:
+  up to 40 messages a run from a cursor. Discord 401/403/404 and Slack
+  no_service / channel_not_found / channel_is_archived (or 404/410) delete
+  the sign-up at once (Discord temporarily blocks addresses that keep making
+  invalid requests: 10,000 per 10 minutes, per its docs). 429 or 5xx: stop
+  and retry next minute, never treated as dead. Discord messages suppress
+  link previews and mentions; Slack messages turn link previews off.
+- Measured: decrypting 40 webhooks and signing their unsubscribe links takes
+  about 2 ms of CPU (free plan: 10 ms per run).
+- Pilot: the site pages are noindex and unlinked. Phase 2 (public) links them.
+
 ## RSS feeds of incidents (v1.14.0, Nov 10, 2026)
 
 - `GET /feed.xml` (all services, newest first, at most 50 items) and

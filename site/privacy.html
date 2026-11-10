@@ -41,10 +41,10 @@ footer{margin-top:2.25rem;padding-top:1rem;border-top:1px solid var(--line);colo
 
   <main>
     <h1>Privacy</h1>
-    <p class="updated">Last updated: November 7, 2026</p>
+    <p class="updated">Last updated: November 10, 2026</p>
 
     <div class="short">
-      <p>OutageRadar has no accounts, no cookies, no ads and no tracking. We count page views and link clicks in aggregate (date, page, country and the website you came from). We do not store IP addresses or use cookies or IDs, so the counts can&rsquo;t identify you. We don&rsquo;t sell or share data.</p>
+      <p>OutageRadar has no accounts, no cookies, no ads and no tracking. We count page views and link clicks in aggregate (date, page, country and the website you came from). We do not store IP addresses or use cookies or IDs, so the counts can&rsquo;t identify you. We don&rsquo;t sell or share data. If you sign up for outage alerts, we keep your webhook address (encrypted) and your choices until you unsubscribe.</p>
     </div>
 
     <h2>What happens when you visit</h2>
@@ -53,6 +53,15 @@ footer{margin-top:2.25rem;padding-top:1rem;border-top:1px solid var(--line);colo
       <li><strong>Live status data.</strong> The board loads its status data, and sends the visit counts below, through our own address, data.liveoutageradar.com, which runs on Cloudflare. Cloudflare keeps short-lived technical logs of these requests (such as the time, the address requested and network details, which can include your IP address) for a few days. We use them only for troubleshooting. See <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare&rsquo;s privacy policy</a>.</li>
       <li><strong>Visit counts.</strong> Each page sends one small message to data.liveoutageradar.com when it loads, and one when you click a link to another website. It contains only the page, the domain of the website that sent you here (for example google.com, never the full address), a campaign tag if the link had one (such as utm_source=bluesky), and whether your browser reports being automated. Cloudflare adds your country. We add one to that day&rsquo;s total and keep only the totals, for about 13 months. We do not store IP addresses, browser details or any ID, and nothing is saved on your device.</li>
       <li><strong>Your browser</strong> stores nothing from us: no cookies and no local storage.</li>
+    </ul>
+
+    <h2>Outage alerts (Discord and Slack)</h2>
+    <ul>
+      <li><strong>What we store.</strong> If you sign up for alerts, we store the webhook address you give us, encrypted, plus which platform it is, the services you picked, whether you opted in to degraded-performance alerts, whether the sign-up was confirmed, and two dates. We store no email address, no name and not your IP address.</li>
+      <li><strong>Confirmation.</strong> When you sign up, we post one message to that channel with a confirm link. Nothing else is sent until someone presses Confirm on our page. Confirm and unsubscribe links open a page with a button, so the link previews that Discord and Slack create can&rsquo;t confirm or unsubscribe anyone.</li>
+      <li><strong>How long.</strong> Until you unsubscribe. Sign-ups that are not confirmed are deleted after 24 hours. If Discord or Slack tells us a webhook no longer exists, we delete it.</li>
+      <li><strong>Deleting it.</strong> Use the unsubscribe link in every alert, or email us. Unsubscribing deletes your sign-up at once.</li>
+      <li><strong>Sending.</strong> Alerts are sent from data.liveoutageradar.com on Cloudflare to Discord or Slack, which handle them under their own privacy policies.</li>
     </ul>
 
     <h2>Links to other sites</h2>

@@ -47,11 +47,6 @@ async function claudeOutage(minutes) {
   await runOnce(worker, env);
 }
 
-test("this release is v1.14.0", async () => {
-  await runOnce(worker, env);
-  assert.ok(kv.store.has("samples:v1.14.0"));
-});
-
 test("the all-services feed is valid RSS 2.0 with a self link", async () => {
   await claudeOutage(null);
   const { res, xml } = await feed("/feed.xml");

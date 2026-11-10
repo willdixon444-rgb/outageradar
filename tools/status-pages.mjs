@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { SHELL } from "../site/board.js";
 import { backupsFor, pythonSnippet, jsSnippet } from "./backups.mjs";
 import { ERRORS, errorsFor, renderErrorPage, renderErrorsHub } from "./errors.mjs";
+import { renderAlertsPage, renderTokenPage } from "./alerts.mjs";
 
 export const SITE_URL = "https://liveoutageradar.com";
 // The day the incident log started (checker v1.6.0 deploy). The page script
@@ -276,7 +277,9 @@ function main() {
     console.log("wrote site/status/" + s.id + "/index.html");
   }
   // v1.14.0: API error pages and their hub.
-  const pages = ERRORS.map((e) => ["errors/" + e.slug + "/", renderErrorPage(e)]).concat([["errors/", renderErrorsHub()]]);
+  const pages = ERRORS.map((e) => ["errors/" + e.slug + "/", renderErrorPage(e)]).concat([["errors/", renderErrorsHub()]])
+    // v1.17.0: alert pages (pilot, hidden).
+    .concat([["alerts/", renderAlertsPage()], ["alerts/confirm/", renderTokenPage("confirm")], ["alerts/unsubscribe/", renderTokenPage("unsubscribe")]]);
   for (const [path, html] of pages) {
     const dir = new URL("../site/" + path, import.meta.url);
     mkdirSync(dir, { recursive: true });
