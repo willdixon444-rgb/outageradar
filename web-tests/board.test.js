@@ -26,8 +26,17 @@ const find = (view, id) => view.services.find((s) => s.id === id);
 
 // ---------- never green by default ----------
 
-test("the shell lists all twelve services", () => {
-  assert.equal(SHELL.length, 12);
+test("the shell lists all fourteen services", () => {
+  assert.equal(SHELL.length, 14);
+  // v1.12.0: OpenRouter (no public feed) and GitHub Copilot (feed, no backup box).
+  const or = SHELL.find((x) => x.id === "openrouter");
+  assert.equal(or.status_page, "https://status.openrouter.ai");
+  assert.equal(or.nofeed, true);
+  const gh = SHELL.find((x) => x.id === "github-copilot");
+  assert.equal(gh.name, "GitHub Copilot");
+  assert.equal(gh.status_page, "https://www.githubstatus.com");
+  assert.ok(!gh.nofeed);
+  assert.equal(gh.nobackup, true);
   // v1.11.0: Together AI and Fireworks AI, both with an official feed.
   for (const [id, page] of [["together", "https://status.together.ai"], ["fireworks", "https://status.fireworks.ai"]]) {
     const s = SHELL.find((x) => x.id === id);
@@ -252,6 +261,12 @@ test("only the live state pulses", () => {
   assert.equal(liveState(buildView(fresh(all()), { elapsedSec: 0 }), { paused: false }).pulse, true);
 });
 
+test("GitHub Copilot's HTTP 400 reads as needs a key, only when it counted as answering", () => {
+  const label = "API server answering (our check)";
+  assert.equal(describeProbe({ label, status: "reachable", http_status: 400, latency_ms: 200 }).code, "HTTP 400, needs a key");
+  assert.equal(describeProbe({ label, status: "unknown", http_status: 400 }).code, "HTTP 400");
+});
+
 // ---------- page markup ----------
 import { readFileSync } from "node:fs";
 const PAGE = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
@@ -281,10 +296,13 @@ test("every service has a row and a radar blip on the page before any script run
 
 test("the page text counts the services right and names the new ones", () => {
   assert.doesNotMatch(PAGE, /\bten AI services\b/i);
-  assert.match(PAGE, /twelve AI services/);
+  assert.doesNotMatch(PAGE, /\btwelve AI services\b/i);
+  assert.match(PAGE, /fourteen AI services/);
   const desc = PAGE.match(/<meta name="description" content="([^"]+)">/)[1];
   assert.match(desc, /Together AI/);
   assert.match(desc, /Fireworks AI/);
+  assert.match(desc, /OpenRouter/);
+  assert.match(desc, /GitHub Copilot/);
 });
 
 test("the launched homepage is open to search engines", () => {

@@ -1,7 +1,9 @@
 // v1.10.0: new services collected quietly in hidden sample mode, a request
 // budget for sample runs, and a samples download for review.
-// v1.11.0: Together and Fireworks are listed (see listing.test.js); three stay
-// hidden; Microsoft Copilot is parked (removed, never contacted).
+// v1.11.0: Together and Fireworks are listed (see listing.test.js); Microsoft
+// Copilot is parked (removed, never contacted).
+// v1.12.0: OpenRouter and GitHub Copilot are listed (see b2.test.js); only
+// DeepInfra stays hidden.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import worker from "../checker.js";
@@ -9,19 +11,12 @@ import {
   ALL_IDS, memoryKV, json, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx, runOnce, getStatus,
 } from "./helpers.js";
 
-const HIDDEN = ["openrouter", "deepinfra", "github-copilot"];
+const HIDDEN = ["deepinfra"];
 const NEW_URLS = {
-  "https://openrouter.ai/api/v1/models": () => json({ data: [] }, 200),
   "https://api.deepinfra.com/v1/openai/models": () => json({ object: "list", data: [] }, 200),
-  "https://api.githubcopilot.com/models": () => new Response("bad request: missing header", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } }),
-  "https://www.githubstatus.com/api/v2/summary.json": () => json({
-    status: { indicator: "none" },
-    components: [{ name: "Copilot", status: "operational" }, { name: "Copilot AI Model Providers", status: "operational" }],
-  }),
-  // One-time samples in v1.11.0.
-  "https://status.deepinfra.com/api": () => new Response("<html>DeepInfra status API</html>", { status: 200, headers: { "content-type": "text/html" } }),
-  "https://status.deepinfra.com/status.atom": () => new Response("<feed></feed>", { status: 200, headers: { "content-type": "application/atom+xml" } }),
-  "https://openrouter.ai/api/v1/key": () => json({ error: { code: 401, message: "Missing Authentication header" } }, 401),
+  // One-time samples in v1.12.0.
+  "https://status.deepinfra.com/api/v1/status": () => json({ schemaVersion: 1 }),
+  "https://status.deepinfra.com/api/v1": () => json({ schemaVersion: 1 }),
 };
 
 // Counts KV reads and writes, which Cloudflare also counts as subrequests.
@@ -65,12 +60,12 @@ test("hidden services never reach the history feed", async () => {
 
 test("hidden services never send Discord alerts, even if their check fails", async () => {
   net.restore();
-  const failing = Object.fromEntries(Object.keys(NEW_URLS).filter((u) => /models$|summary\.json$/.test(u)).map((u) => [u, () => json({ e: 1 }, 503)]));
+  const failing = Object.fromEntries(Object.keys(NEW_URLS).map((u) => [u, () => json({ e: 1 }, 503)]));
   net = installFetch({ ...healthyRoutes(), ...NEW_URLS, ...failing });
   for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
   const text = net.discord.map((d) => d.body.content).join("\n");
   // Covers both channels: no outage alert and no feed-problem health message.
-  for (const name of ["OpenRouter", "DeepInfra", "GitHub Copilot", "githubstatus"]) assert.doesNotMatch(text, new RegExp(name), name);
+  assert.doesNotMatch(text, /DeepInfra/);
 });
 
 test("hidden services are still checked, and their answers saved in the samples", async () => {
@@ -81,8 +76,7 @@ test("hidden services are still checked, and their answers saved in the samples"
     assert.ok(saved.probes.some((p) => p.service === id), id + " probe sample");
     assert.ok(saved.feeds.some((f) => f.service === id), id + " feed or page sample");
   }
-  const or = saved.probes.find((p) => p.service === "openrouter");
-  assert.equal(or.http_status, 200);
+  assert.equal(saved.probes.find((p) => p.service === "deepinfra").http_status, 200);
 });
 
 test("a sample run downloads each official feed only once", async () => {

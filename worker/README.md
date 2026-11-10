@@ -18,6 +18,24 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Step B2: OpenRouter and GitHub Copilot listed (v1.12.0, Nov 10, 2026)
+
+- From the v1.11.0 samples. GitHub Copilot's check (api.githubcopilot.com)
+  answered HTTP 400 "bad request: missing required Authorization header":
+  GitHub's server refusing a request without a key, so 400 counts as
+  answering for this service only. Official signal: the worse of githubstatus
+  "Copilot" and "Copilot AI Model Providers". The board shows "HTTP 400, needs
+  a key". Its history page has no backup code (no drop-in API); the board
+  shows no backup link for it.
+- OpenRouter: no official feed (Datadog status page, owner-only API), shown
+  like Gemini and DeepSeek. Check moved to `/api/v1/key` (documented as
+  needing a key; sampled 401) so a cached copy cannot answer for it. Its
+  status is now live in every backup box that offers OpenRouter.
+- DeepInfra stays hidden. Its /api page documents a keyless JSON API with a
+  schemaVersion; `/api/v1/status` and the `/api/v1` index are sampled once.
+- Add `openrouter,github-copilot` to APPROVED_MAPPINGS after deploying.
+- Normal run: 26 fetches (11 feeds + 15 checks), unchanged.
+
 ## Step B1: two services listed, samples round 2 (v1.11.0, Nov 9, 2026)
 
 - From the v1.10.0 samples: Together AI (Better Stack `index.json`, parser

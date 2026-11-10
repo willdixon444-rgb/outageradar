@@ -7,6 +7,8 @@
 // - Sample guesses that failed are retired; new one-time samples are added.
 // - Odd probe replies keep their first characters for review.
 // - Stale data never lists hidden services.
+// v1.12.0 moved the version check, the GitHub Copilot listing and the samples
+// list to b2.test.js; what stays here still holds.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import worker from "../checker.js";
@@ -16,10 +18,7 @@ import {
 } from "./helpers.js";
 
 const HIDDEN_ROUTES = {
-  "https://openrouter.ai/api/v1/models": () => json({ data: [] }, 200),
   "https://api.deepinfra.com/v1/openai/models": () => json({ object: "list", data: [] }, 200),
-  "https://api.githubcopilot.com/models": () => new Response("bad request: Authorization header is badly formatted", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } }),
-  "https://www.githubstatus.com/api/v2/summary.json": () => json(github({})),
 };
 
 function github(over) {
@@ -51,14 +50,6 @@ afterEach(() => { net.restore(); net = null; clk.restore(); logs.restore(); });
 
 const savedSamples = () => JSON.parse(kv.store.get([...kv.store.keys()].find((k) => k.startsWith("samples:"))));
 const savedState = () => JSON.parse(kv.store.get("state:v1"));
-
-// ---------- version ----------
-
-test("this release is v1.11.0 and collects a fresh set of samples", async () => {
-  await runOnce(worker, env);
-  assert.ok(kv.store.has("samples:v1.11.0"));
-  assert.equal(savedSamples().version, "1.11.0");
-});
 
 // ---------- Together AI and Fireworks AI on the board ----------
 
@@ -148,26 +139,23 @@ test("GitHub Copilot ignores the rest of GitHub", async () => {
   assert.equal(savedState().services["github-copilot"].feed_preview, "operational");
 });
 
-test("GitHub Copilot stays off the board while its check is unconfirmed", async () => {
-  env = makeEnv(kv, { APPROVED_MAPPINGS: [...ALL_IDS, "github-copilot"].join(",") });
-  await runOnce(worker, env);
-  const { body } = await getStatus(worker, env);
-  assert.equal(svc(body, "github-copilot"), undefined);
-});
-
 // ---------- an odd probe reply is kept for review ----------
 
+const TEAPOT = { [URLS.together.probe]: () => new Response("I'm a teapot", { status: 418, headers: { "content-type": "text/plain" } }) };
+
 test("an unexpected probe reply keeps its first characters in the samples", async () => {
+  setup(TEAPOT);
   await runOnce(worker, env);
-  const gh = savedSamples().probes.find((p) => p.service === "github-copilot");
-  assert.equal(gh.http_status, 400);
-  assert.equal(gh.result, "odd");
-  assert.match(gh.first_chars, /Authorization header is badly formatted/);
+  const p = savedSamples().probes.find((x) => x.service === "together");
+  assert.equal(p.http_status, 418);
+  assert.equal(p.result, "odd");
+  assert.match(p.first_chars, /teapot/);
 });
 
 test("an odd probe reply still never counts as up", async () => {
+  setup(TEAPOT);
   await runOnce(worker, env);
-  assert.equal(savedState().services["github-copilot"].last_probe, "unknown");
+  assert.equal(svc((await getStatus(worker, env)).body, "together").probe.status, "unknown");
 });
 
 // ---------- Microsoft Copilot parked ----------
@@ -193,21 +181,6 @@ test("sample guesses that failed in v1.10.0 are not fetched again", async () => 
     "https://status.together.ai/",
     "https://status.fireworks.ai/",
   ]) assert.ok(!urls.includes(u), u);
-});
-
-test("new one-time samples: DeepInfra's API page and Atom feed, OpenRouter's key endpoint", async () => {
-  await runOnce(worker, env);
-  const feeds = savedSamples().feeds;
-  for (const [service, url] of [
-    ["deepinfra", "https://status.deepinfra.com/api"],
-    ["deepinfra", "https://status.deepinfra.com/status.atom"],
-    ["openrouter", "https://openrouter.ai/api/v1/key"],
-  ]) {
-    const f = feeds.find((x) => x.url === url);
-    assert.ok(f, url);
-    assert.equal(f.service, service);
-    assert.ok(!f.skipped, url + " was skipped");
-  }
 });
 
 test("GitHub's feed is saved once in the samples, from the main run", async () => {

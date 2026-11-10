@@ -202,9 +202,9 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
     <h2 id="h-backup">If DeepSeek is down: switch to a backup</h2>
     <p class="intro">These AI APIs work with the official OpenAI library. Change the address and the key, pick a model from that provider&rsquo;s list, and you&rsquo;re running again. Each shows its live status, so you don&rsquo;t switch to one that&rsquo;s also down.</p>
     <ul class="backups">
-    <li data-backup="openrouter" data-status="">
+    <li data-backup="openrouter" data-status="openrouter">
       <details open>
-        <summary><span class="bn">OpenRouter</span> <span class="bs bs-unk">Not tracked on OutageRadar yet</span></summary>
+        <summary><span class="bn">OpenRouter</span> <span class="bs bs-unk">Checking&hellip;</span></summary>
         <p class="bnote">One key for many companies' models. Pick a model from a different company than the one that is down.</p>
         <p class="blinks"><a href="https://openrouter.ai/models">OpenRouter&rsquo;s current model list</a> &middot; <a href="https://openrouter.ai/docs/quickstart">setup guide</a></p>
         <p class="lang">Python</p>
@@ -352,6 +352,8 @@ console.log(reply.choices[0].message.content);</code></pre></div>
       <li><a href="/status/huggingface/">Is Hugging Face down?</a></li>
       <li><a href="/status/together/">Is Together AI down?</a></li>
       <li><a href="/status/fireworks/">Is Fireworks AI down?</a></li>
+      <li><a href="/status/openrouter/">Is OpenRouter down?</a></li>
+      <li><a href="/status/github-copilot/">Is GitHub Copilot down?</a></li>
     </ul>
     <p><a href="/">See all services on the live board</a></p>
   </nav>

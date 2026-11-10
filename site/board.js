@@ -37,6 +37,10 @@ export const SHELL = [
   // v1.11.0 (Nov 9, 2026): listed from the checker's real samples.
   { id: "together", name: "Together AI", status_page: "https://status.together.ai" },
   { id: "fireworks", name: "Fireworks AI", status_page: "https://status.fireworks.ai" },
+  // v1.12.0 (Nov 10, 2026). OpenRouter's status page has no public feed.
+  // GitHub Copilot has no drop-in API to switch to, so no backup box or link.
+  { id: "openrouter", name: "OpenRouter", status_page: "https://status.openrouter.ai", nofeed: true },
+  { id: "github-copilot", name: "GitHub Copilot", status_page: "https://www.githubstatus.com", nobackup: true },
 ];
 
 export const COLORS = {
@@ -155,6 +159,9 @@ export function describeProbe(probe) {
   let code = Number.isInteger(probe.http_status) ? "HTTP " + probe.http_status : "";
   // 401/403 from an API without a key means "up, but needs a key", not an error.
   if (api && (probe.http_status === 401 || probe.http_status === 403)) code += ", needs a key";
+  // v1.12.0: GitHub Copilot's server answers 400 "missing required
+  // Authorization header"; the checker counts 400 as answering only there.
+  else if (api && probe.http_status === 400 && probe.status === "reachable") code += ", needs a key";
   return { text: "Our check: " + text, code };
 }
 
@@ -251,7 +258,8 @@ function serviceModel(raw, entry, order, nowMs) {
     probe: describeProbe(raw.probe),
     note: NOTES[badge.key] || "",
     history: describeIncidents(raw.incidents, nowMs),
-    troubled: TROUBLE_KEYS.includes(badge.key),
+    // The board's backup link only where the page has backups to offer.
+    troubled: !entry.nobackup && TROUBLE_KEYS.includes(badge.key),
   };
 }
 

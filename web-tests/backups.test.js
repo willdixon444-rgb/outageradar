@@ -40,7 +40,7 @@ test("a service never lists itself, and gets four backups", () => {
 });
 
 test("every history page has the backup section with working code for each backup", () => {
-  for (const s of SHELL) {
+  for (const s of SHELL.filter((x) => !x.nobackup)) {
     const html = page(s.id);
     assert.match(html, /<section class="sec backup" id="backup"/, s.id);
     for (const b of backupsFor(s.id)) {
@@ -62,7 +62,7 @@ test("code never contains a real-looking key and never asks for one on the page"
 });
 
 test("the safety notes are there: test first, different company, Claude's testing caveat", () => {
-  for (const s of SHELL) {
+  for (const s of SHELL.filter((x) => !x.nobackup)) {
     const html = page(s.id);
     assert.match(html, /Test a backup in development before routing production traffic/, s.id);
     assert.match(html, /different company/, s.id);
@@ -74,7 +74,8 @@ test("no referral or sponsored links yet; TokenMargin linked plainly for full se
   for (const s of SHELL) {
     const html = page(s.id);
     assert.doesNotMatch(html, /sponsored|utm_|[?&]ref=|\baffiliate\b/i, s.id); // "not affiliated" in the footer is fine
-    assert.match(html, /<a href="https:\/\/tokenmargin\.dev" target="_blank" rel="noopener">TokenMargin<\/a>/, s.id);
+    // TokenMargin (API fallback setups) sits with the backup code, so not on a no-backup page.
+    if (!s.nobackup) assert.match(html, /<a href="https:\/\/tokenmargin\.dev" target="_blank" rel="noopener">TokenMargin<\/a>/, s.id);
   }
 });
 
@@ -116,6 +117,35 @@ test("the board offers a backup link only while a service has problems", () => {
     assert.equal(viewWith(key).services.find((s) => s.id === "claude").troubled, false, key);
   }
   assert.ok(buildView(null, { state: "loading" }).services.every((s) => s.troubled === false));
+});
+
+test("a service without a backup box never gets the board's backup link", () => {
+  const now = "2026-11-10T12:00:00Z";
+  const services = SHELL.map((s) => ({
+    id: s.id, name: s.name, status_page: s.status_page, overall: "major_outage",
+    official: { label: "Official status", status: "major_outage", checked_at_utc: now, note: "" },
+    probe: { label: "API server answering (our check)", status: "reachable", checked_at_utc: now, http_status: 401, note: "" },
+  }));
+  const view = buildView({ schema: 1, generated_at_utc: now, served_at_utc: now, age_seconds: 10, stale: false, services }, { elapsedSec: 5 });
+  const gh = view.services.find((s) => s.id === "github-copilot");
+  assert.equal(gh.badge.key, "major_outage", "the problem itself still shows");
+  assert.equal(gh.troubled, false);
+  assert.equal(view.services.find((s) => s.id === "openrouter").troubled, true);
+});
+
+test("the GitHub Copilot page explains there is no drop-in backup, with no code", () => {
+  const html = page("github-copilot");
+  assert.match(html, /<section class="sec backup" id="backup"/);
+  assert.doesNotMatch(html, /PICK_FROM_LIST|base_url|baseURL|data-backup=/);
+  assert.match(html, /no drop-in replacement/);
+  assert.ok(html.includes('href="https://www.githubstatus.com"'));
+});
+
+test("OpenRouter is tracked now, so its backup boxes show live status", () => {
+  assert.equal(BACKUPS.find((b) => b.id === "openrouter").status, "openrouter");
+  const html = page("claude");
+  assert.match(html, /<li data-backup="openrouter" data-status="openrouter">/);
+  for (const b of BACKUPS) if (b.status) assert.ok(SHELL.some((s) => s.id === b.status), b.id + " status points at a board service");
 });
 
 test("the board's link goes to the backup section of that service's page", () => {

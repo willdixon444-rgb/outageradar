@@ -40,7 +40,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.11.0";
+const VERSION = "1.12.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -250,10 +250,11 @@ const SERVICES = [
     probe_label: API_LABEL,
     probe_words: "API server",
   },
-  // ---- HIDDEN (listed: false) since v1.10.0. ----
-  // Checked every run, but never in status.json, /incidents.json or Discord
-  // (neither channel), and never treated as approved, until a later release
-  // reviews the real samples and lists them.
+  // ---- Added in v1.10.0 in hidden sample mode. ----
+  // A service with listed: false is checked every run, but never appears in
+  // status.json, /incidents.json or Discord (neither channel), and never
+  // counts as approved, until a release reviews its real samples and lists
+  // it. v1.12.0: OpenRouter and GitHub Copilot listed; DeepInfra still hidden.
   // Parked in v1.11.0: Microsoft Copilot. status.cloud.microsoft is a script
   // app with no documented public feed, and copilot.microsoft.com answers
   // with a sign-in page, which says little about whether Copilot works. It is
@@ -262,34 +263,36 @@ const SERVICES = [
     // status.openrouter.ai runs on Datadog Status Pages (owner confirmed the
     // "Powered by Datadog" footer, Nov 9, 2026). Datadog's documented status
     // page API needs the page owner's keys; no public reader feed is
-    // documented, and /api/v2/summary.json answered 403. So: no official feed.
-    // The models list answered 200 in 11 ms, which may be an edge cache copy
-    // that stays up while OpenRouter is down. Candidate replacement, sampled
-    // once: GET /api/v1/key, which OpenRouter's API reference documents as
-    // needing a key (401 "Missing Authentication header" without one).
+    // documented, and /api/v2/summary.json answered 403. So: no official feed,
+    // shown like Gemini and DeepSeek. Listed in v1.12.0.
+    // Check: GET /api/v1/key, documented by OpenRouter as needing a key.
+    // Sampled Nov 10, 2026: HTTP 401 (JSON, OpenRouter's own error). The
+    // public model list (the v1.10 check) answered in 11-22 ms, possibly from
+    // an edge cache that could stay up while OpenRouter is down.
     id: "openrouter",
     name: "OpenRouter",
-    listed: false,
     status_page: "https://status.openrouter.ai",
     feed: null,
-    samples: ["https://openrouter.ai/api/v1/key"],
+    samples: [],
     parser: "none",
-    probe: "https://openrouter.ai/api/v1/models",
-    probe_ok: [],
+    probe: "https://openrouter.ai/api/v1/key",
+    probe_ok: [401],
     probe_label: API_LABEL,
     probe_words: "API server",
   },
   {
     // status.deepinfra.com is DeepInfra's own page (not Statuspage:
-    // /api/v2/summary.json is 404). Its menu links an "API" page and an RSS
-    // (Atom) feed; both are sampled once to find a documented feed.
+    // /api/v2/summary.json is 404). Its /api page (sampled Nov 10, 2026)
+    // documents a keyless JSON API with a schemaVersion: /api/v1/status gives
+    // the overall status, core services and every model. Its layout is
+    // sampled once in v1.12.0 before a parser is written. Stays hidden.
     // The models list answers 200 without a key (sampled).
     id: "deepinfra",
     name: "DeepInfra",
     listed: false,
     status_page: "https://status.deepinfra.com",
     feed: null,
-    samples: ["https://status.deepinfra.com/api", "https://status.deepinfra.com/status.atom"],
+    samples: ["https://status.deepinfra.com/api/v1/status", "https://status.deepinfra.com/api/v1"],
     parser: "none",
     probe: "https://api.deepinfra.com/v1/openai/models",
     probe_ok: [],
@@ -300,20 +303,19 @@ const SERVICES = [
     // githubstatus.com (Statuspage, sampled): "Copilot" and "Copilot AI Model
     // Providers" components. The worse of the two counts; the rest of GitHub
     // (Git, Actions...) is ignored. Feed mapped in v1.11.0.
-    // The probe answered HTTP 400 (text/plain). Odd replies now keep their
-    // first characters in the samples, so the next sample shows whether it
-    // is GitHub's own server refusing a request without a key. Stays hidden
-    // until then.
+    // Check: api.githubcopilot.com answered HTTP 400, text/plain "bad request:
+    // missing required Authorization header" (sampled Nov 10, 2026): GitHub's
+    // own server refusing a request without a key, so 400 counts as
+    // answering here (this service only). Listed in v1.12.0.
     id: "github-copilot",
     name: "GitHub Copilot",
-    listed: false,
     status_page: "https://www.githubstatus.com",
     feed: "https://www.githubstatus.com/api/v2/summary.json",
     samples: [],
     parser: "components",
     components: ["Copilot", "Copilot AI Model Providers"],
     probe: "https://api.githubcopilot.com/models",
-    probe_ok: [],
+    probe_ok: [400],
     probe_label: API_LABEL,
     probe_words: "API server",
   },

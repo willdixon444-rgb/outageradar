@@ -82,6 +82,14 @@ const PAGE_STYLES = `
 `;
 
 function backupSection(s, n) {
+  // v1.12.0: services used through their own apps (GitHub Copilot) have no
+  // drop-in API to switch to; say so plainly instead of showing API code.
+  if (s.nobackup) {
+    return `<section class="sec backup" id="backup" aria-labelledby="h-backup">
+    <h2 id="h-backup">If ${esc(n.short)} is down</h2>
+    <p class="intro">${esc(n.full)} is used through its own apps and editor extensions, so there is no drop-in replacement you can switch to by changing an address and a key. Follow <a href="${esc(s.status_page)}">the official status page</a> for updates; the history above shows how long past incidents lasted.</p>
+  </section>`;
+  }
   const items = backupsFor(s.id).map((b, i) => {
     const py = "code-" + b.id + "-py";
     const js = "code-" + b.id + "-js";

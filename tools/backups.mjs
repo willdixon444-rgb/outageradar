@@ -10,7 +10,7 @@ export const BACKUPS = [
   {
     id: "openrouter",
     name: "OpenRouter",
-    status: null,
+    status: "openrouter", // on the board since v1.12.0 (our check only)
     base_url: "https://openrouter.ai/api/v1",
     env: "OPENROUTER_API_KEY",
     docs: "https://openrouter.ai/docs/quickstart",

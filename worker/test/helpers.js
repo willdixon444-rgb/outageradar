@@ -54,6 +54,16 @@ export const URLS = {
     feed: "https://status.fireworks.ai/api/v2/summary.json",
     probe: "https://api.fireworks.ai/inference/v1/models",
   },
+  // v1.12.0: listed from the v1.11.0 samples (Nov 10, 2026).
+  openrouter: {
+    feed: null,
+    page: "https://status.openrouter.ai",
+    probe: "https://openrouter.ai/api/v1/key",
+  },
+  "github-copilot": {
+    feed: "https://www.githubstatus.com/api/v2/summary.json",
+    probe: "https://api.githubcopilot.com/models",
+  },
 };
 
 export const ALL_IDS = Object.keys(URLS);
@@ -162,6 +172,10 @@ export function healthyRoutes() {
     [URLS.together.probe]: () => new Response("unauthorized", { status: 401, headers: { "content-type": "text/plain; charset=utf-8" } }),
     [URLS.fireworks.feed]: () => json(statuspage("none")),
     [URLS.fireworks.probe]: unauthorized,
+    [URLS.openrouter.probe]: () => json({ error: { message: "No cookie auth credentials found", code: 401 } }, 401),
+    [URLS["github-copilot"].feed]: () =>
+      json({ status: { indicator: "none" }, components: [{ name: "Copilot", status: "operational" }, { name: "Copilot AI Model Providers", status: "operational" }] }),
+    [URLS["github-copilot"].probe]: () => new Response("bad request: missing required Authorization header\n", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } }),
   };
 }
 
