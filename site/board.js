@@ -34,6 +34,9 @@ export const SHELL = [
   { id: "cohere", name: "Cohere", status_page: "https://status.cohere.com" },
   { id: "groq", name: "Groq", status_page: "https://groqstatus.com" },
   { id: "huggingface", name: "Hugging Face", status_page: "https://status.huggingface.co" },
+  // v1.11.0 (Nov 9, 2026): listed from the checker's real samples.
+  { id: "together", name: "Together AI", status_page: "https://status.together.ai" },
+  { id: "fireworks", name: "Fireworks AI", status_page: "https://status.fireworks.ai" },
 ];
 
 export const COLORS = {

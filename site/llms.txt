@@ -1,12 +1,12 @@
 # OutageRadar
 
-> Live status board for ten AI services (ChatGPT/OpenAI, Claude, Gemini, Grok/xAI, Mistral, Perplexity, DeepSeek, Cohere, Groq, Hugging Face). Each service shows its official status feed plus OutageRadar's own independent check of its API server, every 5 minutes, and a log of recent incidents. OutageRadar is independent and not affiliated with any service listed.
+> Live status board for twelve AI services (ChatGPT/OpenAI, Claude, Gemini, Grok/xAI, Mistral, Perplexity, DeepSeek, Cohere, Groq, Hugging Face, Together AI, Fireworks AI). Each service shows its official status feed plus OutageRadar's own independent check of its API server, every 5 minutes, and a log of recent incidents. OutageRadar is independent and not affiliated with any service listed.
 
 How to read it: "Official status" is what the provider publishes. "Our check" is OutageRadar asking the provider's API server for a reply; a reply (even "needs a key") means the server is up, not that the AI is answering. Gemini and DeepSeek publish no status feed, so only our check is shown for them, marked "our check only". When data is older than 15 minutes, every service shows Unknown rather than a guess. All times are UTC.
 
 ## Pages
 
-- [Live board, all services](https://liveoutageradar.com/): current status of all ten services
+- [Live board, all services](https://liveoutageradar.com/): current status of all twelve services
 - [Is ChatGPT down?](https://liveoutageradar.com/status/openai/): OpenAI status and outage history
 - [Is Claude down?](https://liveoutageradar.com/status/claude/): Claude status and outage history
 - [Is Gemini down?](https://liveoutageradar.com/status/gemini/): Gemini status and outage history
@@ -17,6 +17,8 @@ How to read it: "Official status" is what the provider publishes. "Our check" is
 - [Is Cohere down?](https://liveoutageradar.com/status/cohere/): Cohere status and outage history
 - [Is Groq down?](https://liveoutageradar.com/status/groq/): Groq status and outage history
 - [Is Hugging Face down?](https://liveoutageradar.com/status/huggingface/): Hugging Face status and outage history
+- [Is Together AI down?](https://liveoutageradar.com/status/together/): Together AI status and outage history
+- [Is Fireworks AI down?](https://liveoutageradar.com/status/fireworks/): Fireworks AI status and outage history
 
 Each service page also has an "If X is down: switch to a backup" section: OpenAI-library code for other providers (OpenRouter, Groq, Gemini, OpenAI, Claude, xAI, DeepSeek), each with its live status. No referral links.
 

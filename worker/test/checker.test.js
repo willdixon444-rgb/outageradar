@@ -28,7 +28,7 @@ test("without approved mappings every service is published as unknown", async ()
   await runOnce(worker, env);
   const { res, body } = await getStatus(worker, env);
   assert.equal(res.status, 200);
-  assert.equal(body.services.length, 10);
+  assert.equal(body.services.length, 12); // v1.11.0: + Together AI, Fireworks AI
   for (const s of body.services) {
     assert.equal(s.overall, "unknown", s.id);
     assert.equal(s.official.status, "unknown", s.id);

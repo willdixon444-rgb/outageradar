@@ -45,6 +45,15 @@ export const URLS = {
     page: "https://status.deepseek.com",
     probe: "https://api.deepseek.com/models",
   },
+  // v1.11.0: listed from the v1.10.0 samples (Nov 9, 2026).
+  together: {
+    feed: "https://status.together.ai/index.json",
+    probe: "https://api.together.xyz/v1/models",
+  },
+  fireworks: {
+    feed: "https://status.fireworks.ai/api/v2/summary.json",
+    probe: "https://api.fireworks.ai/inference/v1/models",
+  },
 };
 
 export const ALL_IDS = Object.keys(URLS);
@@ -149,6 +158,10 @@ export function healthyRoutes() {
     [URLS.xai.probe]: unauthorized,
     [URLS.gemini.probe]: () => json({ error: { code: 403, status: "PERMISSION_DENIED" } }, 403),
     [URLS.deepseek.probe]: unauthorized,
+    [URLS.together.feed]: () => json(betterstack("operational")),
+    [URLS.together.probe]: () => new Response("unauthorized", { status: 401, headers: { "content-type": "text/plain; charset=utf-8" } }),
+    [URLS.fireworks.feed]: () => json(statuspage("none")),
+    [URLS.fireworks.probe]: unauthorized,
   };
 }
 

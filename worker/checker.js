@@ -40,7 +40,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.10.0";
+const VERSION = "1.11.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -218,22 +218,61 @@ const SERVICES = [
     probe_label: API_LABEL,
     probe_words: "API server",
   },
-  // ---- Added in v1.10.0: HIDDEN sample mode (listed: false). ----
-  // Checked every run, but never in status.json, /incidents.json or Discord,
-  // and never treated as approved, until a later release reviews the real
-  // samples, sets the feed mapping and lists them. Status page URLs come from
-  // research on Nov 8, 2026 (status pages linked from each provider's site or
-  // reported by status aggregators). Platform notes are UNVERIFIED until the
-  // samples are read. Each saves the status page itself (shows the platform)
-  // plus at most one candidate feed, to stay inside the request budget.
+  // ---- Listed in v1.11.0 from the v1.10.0 samples (Nov 9, 2026). ----
   {
-    // status.openrouter.ai (linked from openrouter.ai): platform UNVERIFIED.
+    // status.together.ai is Better Stack: index.json has the same layout as
+    // Hugging Face's (sampled: aggregate_state "operational", about 190 KB).
+    id: "together",
+    name: "Together AI",
+    status_page: "https://status.together.ai",
+    feed: "https://status.together.ai/index.json",
+    samples: [],
+    parser: "betterstack",
+    // Sampled: HTTP 401 (text/plain) without a key.
+    probe: "https://api.together.xyz/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // status.fireworks.ai serves a Statuspage-format summary.json (sampled:
+    // indicator "none"). It is not hosted by Atlassian, but the format matches.
+    // Its components are single models, so only the overall indicator is read.
+    id: "fireworks",
+    name: "Fireworks AI",
+    status_page: "https://status.fireworks.ai",
+    feed: "https://status.fireworks.ai/api/v2/summary.json",
+    samples: [],
+    parser: "statuspage_indicator",
+    // Sampled: HTTP 401 (JSON) without a key.
+    probe: "https://api.fireworks.ai/inference/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  // ---- HIDDEN (listed: false) since v1.10.0. ----
+  // Checked every run, but never in status.json, /incidents.json or Discord
+  // (neither channel), and never treated as approved, until a later release
+  // reviews the real samples and lists them.
+  // Parked in v1.11.0: Microsoft Copilot. status.cloud.microsoft is a script
+  // app with no documented public feed, and copilot.microsoft.com answers
+  // with a sign-in page, which says little about whether Copilot works. It is
+  // no longer checked; re-add it only with a documented official feed.
+  {
+    // status.openrouter.ai runs on Datadog Status Pages (owner confirmed the
+    // "Powered by Datadog" footer, Nov 9, 2026). Datadog's documented status
+    // page API needs the page owner's keys; no public reader feed is
+    // documented, and /api/v2/summary.json answered 403. So: no official feed.
+    // The models list answered 200 in 11 ms, which may be an edge cache copy
+    // that stays up while OpenRouter is down. Candidate replacement, sampled
+    // once: GET /api/v1/key, which OpenRouter's API reference documents as
+    // needing a key (401 "Missing Authentication header" without one).
     id: "openrouter",
     name: "OpenRouter",
     listed: false,
     status_page: "https://status.openrouter.ai",
     feed: null,
-    samples: ["https://status.openrouter.ai/", "https://status.openrouter.ai/api/v2/summary.json"],
+    samples: ["https://openrouter.ai/api/v1/key"],
     parser: "none",
     probe: "https://openrouter.ai/api/v1/models",
     probe_ok: [],
@@ -241,41 +280,16 @@ const SERVICES = [
     probe_words: "API server",
   },
   {
-    // status.together.ai: platform UNVERIFIED (one source says Better Stack).
-    id: "together",
-    name: "Together AI",
-    listed: false,
-    status_page: "https://status.together.ai",
-    feed: null,
-    samples: ["https://status.together.ai/", "https://status.together.ai/index.json"],
-    parser: "none",
-    probe: "https://api.together.xyz/v1/models",
-    probe_ok: [],
-    probe_label: API_LABEL,
-    probe_words: "API server",
-  },
-  {
-    // status.fireworks.ai: platform UNVERIFIED (one source says incident.io).
-    id: "fireworks",
-    name: "Fireworks AI",
-    listed: false,
-    status_page: "https://status.fireworks.ai",
-    feed: null,
-    samples: ["https://status.fireworks.ai/", "https://status.fireworks.ai/api/v2/summary.json"],
-    parser: "none",
-    probe: "https://api.fireworks.ai/inference/v1/models",
-    probe_ok: [],
-    probe_label: API_LABEL,
-    probe_words: "API server",
-  },
-  {
-    // status.deepinfra.com: platform UNVERIFIED.
+    // status.deepinfra.com is DeepInfra's own page (not Statuspage:
+    // /api/v2/summary.json is 404). Its menu links an "API" page and an RSS
+    // (Atom) feed; both are sampled once to find a documented feed.
+    // The models list answers 200 without a key (sampled).
     id: "deepinfra",
     name: "DeepInfra",
     listed: false,
     status_page: "https://status.deepinfra.com",
     feed: null,
-    samples: ["https://status.deepinfra.com/", "https://status.deepinfra.com/api/v2/summary.json"],
+    samples: ["https://status.deepinfra.com/api", "https://status.deepinfra.com/status.atom"],
     parser: "none",
     probe: "https://api.deepinfra.com/v1/openai/models",
     probe_ok: [],
@@ -283,36 +297,25 @@ const SERVICES = [
     probe_words: "API server",
   },
   {
-    // GitHub's status page (Statuspage) has "Copilot" and "Copilot AI Model
-    // Providers" components (GitHub blog). How to combine them: from samples.
-    // The probe address is a CANDIDATE only; the sample shows what it answers.
+    // githubstatus.com (Statuspage, sampled): "Copilot" and "Copilot AI Model
+    // Providers" components. The worse of the two counts; the rest of GitHub
+    // (Git, Actions...) is ignored. Feed mapped in v1.11.0.
+    // The probe answered HTTP 400 (text/plain). Odd replies now keep their
+    // first characters in the samples, so the next sample shows whether it
+    // is GitHub's own server refusing a request without a key. Stays hidden
+    // until then.
     id: "github-copilot",
     name: "GitHub Copilot",
     listed: false,
     status_page: "https://www.githubstatus.com",
-    feed: null,
-    samples: ["https://www.githubstatus.com/api/v2/summary.json"],
-    parser: "none",
+    feed: "https://www.githubstatus.com/api/v2/summary.json",
+    samples: [],
+    parser: "components",
+    components: ["Copilot", "Copilot AI Model Providers"],
     probe: "https://api.githubcopilot.com/models",
     probe_ok: [],
     probe_label: API_LABEL,
     probe_words: "API server",
-  },
-  {
-    // Microsoft lists Copilot on status.cloud.microsoft; whether a
-    // machine-readable feed exists is UNVERIFIED (the page is sampled).
-    // The probe is the public website, which may block automated checks.
-    id: "microsoft-copilot",
-    name: "Microsoft Copilot",
-    listed: false,
-    status_page: "https://status.cloud.microsoft",
-    feed: null,
-    samples: ["https://status.cloud.microsoft/"],
-    parser: "none",
-    probe: "https://copilot.microsoft.com/",
-    probe_ok: [],
-    probe_label: SITE_LABEL,
-    probe_words: "site",
   },
 ];
 
@@ -575,8 +578,11 @@ async function checkProbe(service) {
       }
       return { result: "ok", ms, code, reason: "", checkedAt, headers, peek };
     }
-    discardBody(res);
-    return { result: "odd", ms, code, reason: "unexpected HTTP " + code, checkedAt, headers, peek: "" };
+    // v1.11.0: keep the first characters of an unexpected reply so the samples
+    // show who answered (the provider's server, or something in between).
+    // Still "odd": never counted as up or down.
+    const peek = await peekBody(res, PROBE_PEEK_CHARS);
+    return { result: "odd", ms, code, reason: "unexpected HTTP " + code, checkedAt, headers, peek };
   } catch (err) {
     return { result: "fail", ms: null, code: 0, reason: describeError(err), checkedAt, headers: {}, peek: "" };
   }
@@ -977,9 +983,10 @@ async function runCheck(env) {
     else if (!feed.ok) officialNote = "Feed problem: " + feed.reason;
     else if (feed.reason) officialNote = feed.reason;
 
-    // Feed health counters and alerts (health channel).
+    // Feed health counters and alerts (health channel). Hidden services count
+    // but never post (v1.11.0: GitHub Copilot is the first hidden one with a feed).
     if (feed.ok) {
-      if (st.feed_alert_open) {
+      if (st.feed_alert_open && isListed(service)) {
         const sent = await postDiscord(env.DISCORD_HEALTH_WEBHOOK, EMOJI.tool + " **FEED OK** " +
           service.name + " official feed is working again. " + humanTime(now));
         if (sent) st.feed_alert_open = false;
@@ -987,7 +994,7 @@ async function runCheck(env) {
       st.feed_fails = 0;
     } else {
       st.feed_fails += 1;
-      if (st.feed_fails >= FEED_FAILS_TO_ALERT && !st.feed_alert_open) {
+      if (st.feed_fails >= FEED_FAILS_TO_ALERT && !st.feed_alert_open && isListed(service)) {
         const sent = await postDiscord(env.DISCORD_HEALTH_WEBHOOK, EMOJI.tool + " **FEED PROBLEM** " +
           service.name + " official feed failed " + st.feed_fails + " checks in a row (" + feed.reason +
           "). Showing Unknown. " + humanTime(now) + ". <" + service.feed + ">");
@@ -1167,7 +1174,8 @@ function buildPublic(state, now) {
     served_at_utc: iso(now),
     age_seconds: ageSeconds,
     stale: true,
-    services: SERVICES.map((s) => unknownService(s, note)),
+    // v1.11.0: only public services (stale data had listed hidden ones).
+    services: SERVICES.filter(isListed).map((s) => unknownService(s, note)),
   };
 }
 

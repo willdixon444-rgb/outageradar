@@ -161,4 +161,12 @@ test("llms.txt describes the site, its pages and its data", () => {
   assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/status\.json/);
   assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/incidents\.json/);
   assert.match(txt, /not affiliated/i);
+  assert.doesNotMatch(txt, /\bten\b/i);
+  assert.match(txt, /twelve AI services/);
+});
+
+test("the sitemap lists exactly the board, every history page and the privacy page", () => {
+  const locs = [...SITE("sitemap.xml").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  assert.equal(locs.length, SHELL.length + 2);
+  assert.equal(new Set(locs).size, locs.length, "no duplicates");
 });

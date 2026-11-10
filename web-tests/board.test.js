@@ -26,8 +26,15 @@ const find = (view, id) => view.services.find((s) => s.id === id);
 
 // ---------- never green by default ----------
 
-test("the shell lists all ten services", () => {
-  assert.equal(SHELL.length, 10);
+test("the shell lists all twelve services", () => {
+  assert.equal(SHELL.length, 12);
+  // v1.11.0: Together AI and Fireworks AI, both with an official feed.
+  for (const [id, page] of [["together", "https://status.together.ai"], ["fireworks", "https://status.fireworks.ai"]]) {
+    const s = SHELL.find((x) => x.id === id);
+    assert.ok(s, id);
+    assert.equal(s.status_page, page);
+    assert.ok(!s.nofeed, id + " has an official feed");
+  }
 });
 
 test("no data yet means every service is checking, none green", () => {
@@ -257,6 +264,27 @@ test("every link that opens a new tab is protected with rel=noopener", () => {
   const tags = PAGE.match(/<a\b[^>]*target="_blank"[^>]*>/g) || [];
   assert.ok(tags.length > 0);
   for (const t of tags) assert.match(t, /rel="[^"]*noopener[^"]*"/, t);
+});
+
+test("every service has a row and a radar blip on the page before any script runs", () => {
+  for (const s of SHELL) {
+    assert.ok(PAGE.includes('<li class="row s-checking" data-id="' + s.id + '">'), s.id + " row");
+    assert.ok(PAGE.includes('<circle class="blip s-checking" data-id="' + s.id + '"'), s.id + " blip");
+  }
+  const blips = [...PAGE.matchAll(/<circle class="blip s-checking" data-id="([^"]+)" cx="(\d+)" cy="(\d+)"/g)];
+  assert.equal(blips.length, SHELL.length);
+  for (const [, id, x, y] of blips) {
+    assert.ok(Math.hypot(x - 200, y - 200) <= 175, id + " blip sits inside the radar");
+    for (const [, id2, x2, y2] of blips) if (id2 !== id) assert.ok(Math.hypot(x - x2, y - y2) >= 24, id + " overlaps " + id2);
+  }
+});
+
+test("the page text counts the services right and names the new ones", () => {
+  assert.doesNotMatch(PAGE, /\bten AI services\b/i);
+  assert.match(PAGE, /twelve AI services/);
+  const desc = PAGE.match(/<meta name="description" content="([^"]+)">/)[1];
+  assert.match(desc, /Together AI/);
+  assert.match(desc, /Fireworks AI/);
 });
 
 test("the launched homepage is open to search engines", () => {

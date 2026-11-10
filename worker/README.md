@@ -18,6 +18,30 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Step B1: two services listed, samples round 2 (v1.11.0, Nov 9, 2026)
+
+- From the v1.10.0 samples: Together AI (Better Stack `index.json`, parser
+  `betterstack`) and Fireworks AI (Statuspage-format `summary.json`, overall
+  indicator only; its components are single models) are listed. Both API
+  servers answer 401 without a key. They show Unknown until their ids are in
+  `APPROVED_MAPPINGS`.
+- GitHub Copilot: feed mapped (githubstatus.com, the worse of the "Copilot"
+  and "Copilot AI Model Providers" components; the rest of GitHub ignored).
+  Still hidden: its check answered HTTP 400, and odd replies now keep their
+  first 600 characters in the samples so the next review can see who answered.
+- OpenRouter: status page is Datadog Status Pages; no documented public feed
+  (Datadog's API needs the page owner's keys), so it will be shown like Gemini
+  and DeepSeek. One-time sample: `GET /api/v1/key` (documented by OpenRouter
+  as needing a key) as a candidate check that a cached copy cannot answer.
+- DeepInfra: its own status site. One-time samples of its `/api` page and its
+  Atom feed (`/status.atom`) to find a documented feed.
+- Microsoft Copilot: parked (removed). No documented public feed; the website
+  check only reached a sign-in page. Re-add only with a documented feed.
+- Fixes: stale or missing data no longer lists hidden services in status.json
+  (the board adds rows for any id it receives, so this leaked); hidden
+  services never post feed-problem messages to the health channel either.
+- Budget measured in tests: sample run 34, normal run 29 (of 50).
+
 ## Hidden sample mode for new services (v1.10.0, Nov 9, 2026)
 
 - Six services are checked quietly with `listed: false`: OpenRouter, Together
