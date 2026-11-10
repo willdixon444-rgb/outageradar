@@ -169,6 +169,7 @@ test("llms.txt describes the site, its pages and its data", () => {
 
 test("the sitemap lists exactly the board, every history page and the privacy page", () => {
   const locs = [...SITE("sitemap.xml").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  assert.equal(locs.length, SHELL.length + 2);
+  // Board + history pages + privacy + the /errors/ hub + 8 error pages (v1.14.0).
+  assert.equal(locs.length, SHELL.length + 2 + 1 + 8);
   assert.equal(new Set(locs).size, locs.length, "no duplicates");
 });

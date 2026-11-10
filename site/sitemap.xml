@@ -16,5 +16,14 @@
   <url><loc>https://liveoutageradar.com/status/openrouter/</loc><lastmod>2026-11-10</lastmod></url>
   <url><loc>https://liveoutageradar.com/status/github-copilot/</loc><lastmod>2026-11-10</lastmod></url>
   <url><loc>https://liveoutageradar.com/status/deepinfra/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/claude-529-overloaded/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/claude-429-rate-limit/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/openai-503-overloaded/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/openai-429-rate-limit/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/openai-insufficient-quota/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/gemini-429-resource-exhausted/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/gemini-503-unavailable/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/errors/deepseek-503-server-overloaded/</loc><lastmod>2026-11-10</lastmod></url>
   <url><loc>https://liveoutageradar.com/privacy.html</loc><lastmod>2026-11-07</lastmod></url>
 </urlset>

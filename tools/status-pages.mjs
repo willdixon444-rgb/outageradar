@@ -10,8 +10,9 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { SHELL } from "../site/board.js";
 import { backupsFor, pythonSnippet, jsSnippet } from "./backups.mjs";
+import { ERRORS, errorsFor, renderErrorPage, renderErrorsHub } from "./errors.mjs";
 
-const SITE_URL = "https://liveoutageradar.com";
+export const SITE_URL = "https://liveoutageradar.com";
 // The day the incident log started (checker v1.6.0 deploy). The page script
 // replaces this with the exact date from the data when it loads.
 export const PAGE_LOG_START = "Nov 8, 2026";
@@ -27,23 +28,23 @@ export function pageNames(s) {
   return { short: extra.short || s.name, full: s.name, company: extra.company || "" };
 }
 
-function esc(text) {
+export function esc(text) {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // Code blocks only need & < > escaped; quotes stay readable in the source.
-function escCode(text) {
+export function escCode(text) {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function boardStyles() {
+export function boardStyles() {
   const html = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
   const m = html.match(/<style>([\s\S]*?)<\/style>/);
   if (!m) throw new Error("no <style> in site/index.html");
   return m[1].trim();
 }
 
-const PAGE_STYLES = `
+export const PAGE_STYLES = `
 .crumbs{margin:1rem 0 0;font-size:.9rem;color:var(--muted)}
 .crumbs a{color:var(--muted)}
 .brand a{text-decoration:none}
@@ -91,7 +92,7 @@ const OFFICIAL_SOURCE = {
   },
 };
 
-function backupSection(s, n) {
+export function backupSection(s, n) {
   // v1.12.0: services used through their own apps (GitHub Copilot) have no
   // drop-in API to switch to; say so plainly instead of showing API code.
   if (s.nobackup) {
@@ -126,6 +127,19 @@ function backupSection(s, n) {
     </ul>
     <p class="since">Test a backup in development before routing production traffic. Pick a model from a different company than the one that&rsquo;s down. Your code talks to the provider directly; OutageRadar never sees your key. For a full automatic fallback setup, see <a href="https://tokenmargin.dev" target="_blank" rel="noopener">TokenMargin</a>.</p>
   </section>`;
+}
+
+// v1.14.0: links to this provider's API error pages, if any.
+function errorLinks(s, n) {
+  const list = errorsFor(s.id);
+  if (!list.length) return "";
+  return `<nav class="sec others" aria-labelledby="h-errors">
+    <h2 id="h-errors">Common ${esc(n.short)} API errors</h2>
+    <ul>
+      ${list.map((e) => '<li><a href="/errors/' + e.slug + '/">' + esc(e.h1) + "</a></li>").join("\n      ")}
+    </ul>
+  </nav>
+  `;
 }
 
 export function renderServicePage(s, all = SHELL) {
@@ -232,7 +246,7 @@ ${PAGE_STYLES.trim()}
     <p>An incident is logged when the official status shows degraded performance or an outage, or when our check fails twice in a row. It ends after two healthy checks in a row. Times are when our checker saw the change, within five minutes.</p>
   </section>
 
-  <nav class="sec others" aria-labelledby="h-others">
+  ${errorLinks(s, n)}<nav class="sec others" aria-labelledby="h-others">
     <h2 id="h-others">Other AI services</h2>
     <ul>
       ${others}
@@ -258,6 +272,15 @@ function main() {
     if ([...Buffer.from(html)].some((b) => b > 127)) throw new Error("non-ASCII output for " + s.id);
     writeFileSync(new URL("index.html", dir), html);
     console.log("wrote site/status/" + s.id + "/index.html");
+  }
+  // v1.14.0: API error pages and their hub.
+  const pages = ERRORS.map((e) => ["errors/" + e.slug + "/", renderErrorPage(e)]).concat([["errors/", renderErrorsHub()]]);
+  for (const [path, html] of pages) {
+    const dir = new URL("../site/" + path, import.meta.url);
+    mkdirSync(dir, { recursive: true });
+    if ([...Buffer.from(html)].some((b) => b > 127)) throw new Error("non-ASCII output for " + path);
+    writeFileSync(new URL("index.html", dir), html);
+    console.log("wrote site/" + path + "index.html");
   }
 }
 

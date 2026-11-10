@@ -25,6 +25,20 @@ How to read it: "Official status" is what the provider publishes. "Our check" is
 
 Each service page except GitHub Copilot's also has an "If X is down: switch to a backup" section: OpenAI-library code for other providers (OpenRouter, Groq, Gemini, OpenAI, Claude, xAI, DeepSeek), each with its live status. No referral links.
 
+## API error pages
+
+What common AI API errors mean, whether the provider or the caller is at fault, and what to do, with that provider's live status on each page. Facts come from each provider's own docs (last checked Nov 10, 2026).
+
+- [All API errors](https://liveoutageradar.com/errors/)
+- [Claude API error 529: overloaded_error](https://liveoutageradar.com/errors/claude-529-overloaded/)
+- [Claude API error 429: rate_limit_error](https://liveoutageradar.com/errors/claude-429-rate-limit/)
+- [OpenAI API error 503: server_is_overloaded](https://liveoutageradar.com/errors/openai-503-overloaded/)
+- [OpenAI API error 429: rate limit reached or slow_down](https://liveoutageradar.com/errors/openai-429-rate-limit/)
+- [OpenAI: You exceeded your current quota (insufficient_quota)](https://liveoutageradar.com/errors/openai-insufficient-quota/)
+- [Gemini API error 429: RESOURCE_EXHAUSTED](https://liveoutageradar.com/errors/gemini-429-resource-exhausted/)
+- [Gemini API error 503: UNAVAILABLE](https://liveoutageradar.com/errors/gemini-503-unavailable/)
+- [DeepSeek API error 503: Server Overloaded](https://liveoutageradar.com/errors/deepseek-503-server-overloaded/)
+
 ## Data
 
 - https://data.liveoutageradar.com/status.json: current status of every service (overall, official status, our check, last incident). Refreshed every 5 minutes.
