@@ -40,7 +40,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.12.0";
+const VERSION = "1.13.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -254,7 +254,8 @@ const SERVICES = [
   // A service with listed: false is checked every run, but never appears in
   // status.json, /incidents.json or Discord (neither channel), and never
   // counts as approved, until a release reviews its real samples and lists
-  // it. v1.12.0: OpenRouter and GitHub Copilot listed; DeepInfra still hidden.
+  // it. v1.12.0: OpenRouter and GitHub Copilot listed. v1.13.0: DeepInfra
+  // listed; no service is hidden now.
   // Parked in v1.11.0: Microsoft Copilot. status.cloud.microsoft is a script
   // app with no documented public feed, and copilot.microsoft.com answers
   // with a sign-in page, which says little about whether Copilot works. It is
@@ -281,19 +282,18 @@ const SERVICES = [
     probe_words: "API server",
   },
   {
-    // status.deepinfra.com is DeepInfra's own page (not Statuspage:
-    // /api/v2/summary.json is 404). Its /api page (sampled Nov 10, 2026)
-    // documents a keyless JSON API with a schemaVersion: /api/v1/status gives
-    // the overall status, core services and every model. Its layout is
-    // sampled once in v1.12.0 before a parser is written. Stays hidden.
-    // The models list answers 200 without a key (sampled).
+    // status.deepinfra.com is DeepInfra's own site. Its /api page documents a
+    // keyless JSON API (schemaVersion 1; fields only added within a version).
+    // /api/v1/status (sampled Nov 10, 2026, about 32 KB) has overallStatus,
+    // isStale, two core services ("api", "website") and ~171 single models.
+    // Only the core "api" service counts: overallStatus may include single
+    // models. Listed in v1.13.0.
     id: "deepinfra",
     name: "DeepInfra",
-    listed: false,
     status_page: "https://status.deepinfra.com",
-    feed: null,
-    samples: ["https://status.deepinfra.com/api/v1/status", "https://status.deepinfra.com/api/v1"],
-    parser: "none",
+    feed: "https://status.deepinfra.com/api/v1/status",
+    samples: [],
+    parser: "deepinfra_api",
     probe: "https://api.deepinfra.com/v1/openai/models",
     probe_ok: [],
     probe_label: API_LABEL,
@@ -316,6 +316,10 @@ const SERVICES = [
     components: ["Copilot", "Copilot AI Model Providers"],
     probe: "https://api.githubcopilot.com/models",
     probe_ok: [400],
+    // AG review (v1.13.0): a 400 counts only when it is GitHub's own reply,
+    // shown by the text of the real reply. Any other 400 (for example a
+    // generic page from something in front of GitHub) is odd: Unknown.
+    probe_ok_text: { 400: /missing required Authorization header/i },
     probe_label: API_LABEL,
     probe_words: "API server",
   },
@@ -325,6 +329,7 @@ const SERVICES = [
 function isListed(service) {
   return service.listed !== false;
 }
+const PUBLIC_IDS = new Set(SERVICES.filter(isListed).map((s) => s.id));
 
 const NO_FEED_NOTE = "No official public feed";
 
@@ -499,6 +504,21 @@ function parseFeed(service, text, contentType) {
     return { ok: true, status: mapped || "unknown", reason: mapped ? "" : "unrecognised state" };
   }
 
+  if (service.parser === "deepinfra_api") {
+    // v1.13.0. Status words seen in the sample: OPERATIONAL. The others are
+    // matched by the same spelling rules as Statuspage words (UNVERIFIED for
+    // DeepInfra); anything unrecognised is Unknown, never operational.
+    if (!Array.isArray(data.services)) return { ok: false, status: "unknown", reason: "no services list" };
+    const api = data.services.find((x) => x && x.publicId === "api");
+    if (!api) return { ok: false, status: "unknown", reason: "expected components missing" };
+    if (data.isStale === true) return { ok: true, status: "unknown", reason: "provider marks its data stale" };
+    const key = typeof api.status === "string" ? api.status.toLowerCase().replace(/[\s_-]/g, "") : "";
+    const mapped = COMPONENT_MAP[key];
+    // COMPONENT_MAP also holds xAI's "available"; DeepInfra never uses it.
+    if (!mapped || key === "available") return { ok: true, status: "unknown", reason: "unrecognised component status" };
+    return { ok: true, status: mapped, reason: "" };
+  }
+
   return { ok: false, status: "unknown", reason: "no parser" };
 }
 
@@ -556,12 +576,23 @@ async function checkProbe(service) {
       server: res.headers.get("server") || "",
       "content-type": res.headers.get("content-type") || "",
       "cf-mitigated": res.headers.get("cf-mitigated") || "",
+      // v1.13.0 (AG review): whether GitHub's own request-id header came back.
+      // Presence only; the id itself is never stored.
+      "x-github-request-id": res.headers.has("x-github-request-id") ? "present" : "",
     };
     if (headers["cf-mitigated"]) {
       discardBody(res);
       return { result: "blocked", ms, code, reason: "challenge page", checkedAt, headers, peek: "" };
     }
     if ((service.probe_ok || []).includes(code)) {
+      const mustSay = service.probe_ok_text && service.probe_ok_text[code];
+      if (mustSay) {
+        const peek = await peekBody(res, PROBE_PEEK_CHARS);
+        if (!mustSay.test(peek)) {
+          return { result: "odd", ms, code, reason: "unexpected HTTP " + code + " reply", checkedAt, headers, peek };
+        }
+        return { result: "ok", ms, code, reason: "", checkedAt, headers, peek: "" };
+      }
       discardBody(res);
       return { result: "ok", ms, code, reason: "", checkedAt, headers, peek: "" };
     }
@@ -905,7 +936,7 @@ function buildIncidentsPublic(state, now) {
   if (state && typeof state === "object") {
     const log = cleanIncidentLog(state);
     for (const s of SERVICES) {
-      if (typeof log.since[s.id] !== "number") continue;
+      if (!isListed(s) || typeof log.since[s.id] !== "number") continue;
       services.push({
         id: s.id,
         name: s.name,
@@ -1166,7 +1197,10 @@ function buildPublic(state, now) {
     ? Math.max(0, Math.round((now - pub.generated_at_ms) / 1000)) : null;
   if (fresh) {
     const { generated_at_ms, ...rest } = pub;
-    return { ...rest, served_at_utc: iso(now), age_seconds: ageSeconds };
+    // v1.13.0 (AG review): filter again at the last step, so saved data can
+    // never carry an unlisted service out to the public.
+    const services = Array.isArray(rest.services) ? rest.services.filter((x) => x && PUBLIC_IDS.has(x.id)) : [];
+    return { ...rest, services, served_at_utc: iso(now), age_seconds: ageSeconds };
   }
   // Too old or missing: everything unknown, with the last real time if we have one.
   const note = pub ? "Data is stale" : "No data yet";

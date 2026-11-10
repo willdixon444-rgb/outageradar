@@ -41,6 +41,8 @@ export const SHELL = [
   // GitHub Copilot has no drop-in API to switch to, so no backup box or link.
   { id: "openrouter", name: "OpenRouter", status_page: "https://status.openrouter.ai", nofeed: true },
   { id: "github-copilot", name: "GitHub Copilot", status_page: "https://www.githubstatus.com", nobackup: true },
+  // v1.13.0 (Nov 10, 2026): official feed is DeepInfra's own JSON API.
+  { id: "deepinfra", name: "DeepInfra", status_page: "https://status.deepinfra.com" },
 ];
 
 export const COLORS = {

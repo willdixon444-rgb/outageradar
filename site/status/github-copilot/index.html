@@ -195,7 +195,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
     <p class="since" id="since">History logged by OutageRadar since Nov 8, 2026.</p>
     <ul class="history" id="history"><li class="empty">Loading incident history&hellip;</li></ul>
     <noscript><p>The history list needs JavaScript.</p></noscript>
-    <p class="since">For incidents before that, and for GitHub Copilot&rsquo;s own explanations, see the <a href="https://www.githubstatus.com">official GitHub Copilot status page</a>.</p>
+    <p class="since">For incidents before that, and for GitHub&rsquo;s own explanations, see <a href="https://www.githubstatus.com">GitHub&rsquo;s status page</a>.</p>
   </section>
 
   <section class="sec backup" id="backup" aria-labelledby="h-backup">
@@ -205,7 +205,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 
   <section class="sec about" aria-labelledby="h-how">
     <h2 id="h-how">How OutageRadar checks GitHub Copilot</h2>
-    <p><strong>Official status</strong> is what GitHub Copilot publishes on <a href="https://www.githubstatus.com">its own status page</a>, read every five minutes.</p>
+    <p><strong>Official status</strong>: GitHub publishes Copilot&rsquo;s status on <a href="https://www.githubstatus.com">githubstatus.com</a>. OutageRadar reads its Copilot and Copilot AI Model Providers components every five minutes.</p>
     <p><strong>Our check</strong> is OutageRadar asking GitHub Copilot&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies.</p>
     <p>An incident is logged when the official status shows degraded performance or an outage, or when our check fails twice in a row. It ends after two healthy checks in a row. Times are when our checker saw the change, within five minutes.</p>
   </section>
@@ -226,6 +226,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
       <li><a href="/status/together/">Is Together AI down?</a></li>
       <li><a href="/status/fireworks/">Is Fireworks AI down?</a></li>
       <li><a href="/status/openrouter/">Is OpenRouter down?</a></li>
+      <li><a href="/status/deepinfra/">Is DeepInfra down?</a></li>
     </ul>
     <p><a href="/">See all services on the live board</a></p>
   </nav>

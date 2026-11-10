@@ -64,7 +64,27 @@ export const URLS = {
     feed: "https://www.githubstatus.com/api/v2/summary.json",
     probe: "https://api.githubcopilot.com/models",
   },
+  // v1.13.0: listed from the v1.12.0 samples (Nov 10, 2026).
+  deepinfra: {
+    feed: "https://status.deepinfra.com/api/v1/status",
+    probe: "https://api.deepinfra.com/v1/openai/models",
+  },
 };
+
+// DeepInfra's /api/v1/status, shaped like the Nov 10, 2026 sample (models cut).
+export function deepinfraStatus(over = {}) {
+  const { api = "OPERATIONAL", website = "OPERATIONAL", ...top } = over;
+  const services = [];
+  if (api !== null) services.push({ publicId: "api", displayName: "API", hostname: "api.deepinfra.com", status: api, checksFailingNow: false });
+  services.push({ publicId: "website", displayName: "Website", hostname: "deepinfra.com", status: website, checksFailingNow: false });
+  return {
+    schemaVersion: 1, overallStatus: "OPERATIONAL", generatedAt: "2026-11-10T02:35:22.309Z", isStale: false,
+    services,
+    models: [{ publicId: "all-minilm-l12-v2", displayName: "all-MiniLM-L12-v2", status: "OPERATIONAL", checksFailingNow: false }],
+    activeIncidents: [], upcomingMaintenance: [],
+    ...top,
+  };
+}
 
 export const ALL_IDS = Object.keys(URLS);
 
@@ -176,6 +196,8 @@ export function healthyRoutes() {
     [URLS["github-copilot"].feed]: () =>
       json({ status: { indicator: "none" }, components: [{ name: "Copilot", status: "operational" }, { name: "Copilot AI Model Providers", status: "operational" }] }),
     [URLS["github-copilot"].probe]: () => new Response("bad request: missing required Authorization header\n", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } }),
+    [URLS.deepinfra.feed]: () => json(deepinfraStatus()),
+    [URLS.deepinfra.probe]: () => json({ object: "list", data: [] }, 200),
   };
 }
 

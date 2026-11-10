@@ -81,6 +81,16 @@ const PAGE_STYLES = `
 @media (max-width:40rem){.history li{grid-template-columns:minmax(0,1fr) auto}.history .when{grid-column:1 / -1;order:3}}
 `;
 
+// v1.13.0: where the official signal comes from when it is not the service's
+// own status page. GitHub Copilot's comes from GitHub's page (the components
+// named are the ones the checker reads; see worker/checker.js).
+const OFFICIAL_SOURCE = {
+  "github-copilot": {
+    how: "GitHub publishes Copilot&rsquo;s status on <a href=\"https://www.githubstatus.com\">githubstatus.com</a>. OutageRadar reads its Copilot and Copilot AI Model Providers components every five minutes.",
+    history: "GitHub&rsquo;s own explanations, see <a href=\"https://www.githubstatus.com\">GitHub&rsquo;s status page</a>",
+  },
+};
+
 function backupSection(s, n) {
   // v1.12.0: services used through their own apps (GitHub Copilot) have no
   // drop-in API to switch to; say so plainly instead of showing API code.
@@ -157,7 +167,10 @@ export function renderServicePage(s, all = SHELL) {
     : "Official status: checking&hellip;";
   const howParas = s.nofeed
     ? "<p>" + esc(n.full) + " publishes no public status feed. OutageRadar asks its API server for a reply every five minutes; a reply, even &ldquo;needs a key&rdquo;, shows the server is up. It does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies. This is shown as &ldquo;Up (our check only)&rdquo; with a dashed outline, never as an official all-clear.</p>"
-    : "<p><strong>Official status</strong> is what " + esc(n.full) + " publishes on <a href=\"" + esc(s.status_page) + "\">its own status page</a>, read every five minutes.</p>\n    <p><strong>Our check</strong> is OutageRadar asking " + esc(n.full) + "&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies.</p>";
+    : (OFFICIAL_SOURCE[s.id]
+      ? "<p><strong>Official status</strong>: " + OFFICIAL_SOURCE[s.id].how + "</p>"
+      : "<p><strong>Official status</strong> is what " + esc(n.full) + " publishes on <a href=\"" + esc(s.status_page) + "\">its own status page</a>, read every five minutes.</p>") +
+      "\n    <p><strong>Our check</strong> is OutageRadar asking " + esc(n.full) + "&rsquo;s API server for a reply at the same time. A reply, even &ldquo;needs a key&rdquo;, proves the server is up; it does not prove the AI is answering questions. The time shown is how long the API server took to answer our check, from Cloudflare&rsquo;s network; it varies by moment and location and is not the speed of AI replies.</p>";
 
   return `<!doctype html>
 <html lang="en">
@@ -208,7 +221,7 @@ ${PAGE_STYLES.trim()}
     <p class="since" id="since">History logged by OutageRadar since ${PAGE_LOG_START}.</p>
     <ul class="history" id="history"><li class="empty">Loading incident history&hellip;</li></ul>
     <noscript><p>The history list needs JavaScript.</p></noscript>
-    <p class="since">For incidents before that, and for ${esc(n.full)}&rsquo;s own explanations, see the <a href="${esc(s.status_page)}">official ${esc(n.full)} status page</a>.</p>
+    <p class="since">For incidents before that, and for ${OFFICIAL_SOURCE[s.id] ? OFFICIAL_SOURCE[s.id].history : esc(n.full) + "&rsquo;s own explanations, see the <a href=\"" + esc(s.status_page) + "\">official " + esc(n.full) + " status page</a>"}.</p>
   </section>
 
   ${backupSection(s, n)}

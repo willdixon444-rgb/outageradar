@@ -26,8 +26,12 @@ const find = (view, id) => view.services.find((s) => s.id === id);
 
 // ---------- never green by default ----------
 
-test("the shell lists all fourteen services", () => {
-  assert.equal(SHELL.length, 14);
+test("the shell lists all fifteen services", () => {
+  assert.equal(SHELL.length, 15);
+  // v1.13.0: DeepInfra, with an official feed and a backup box.
+  const di = SHELL.find((x) => x.id === "deepinfra");
+  assert.equal(di.status_page, "https://status.deepinfra.com");
+  assert.ok(!di.nofeed && !di.nobackup);
   // v1.12.0: OpenRouter (no public feed) and GitHub Copilot (feed, no backup box).
   const or = SHELL.find((x) => x.id === "openrouter");
   assert.equal(or.status_page, "https://status.openrouter.ai");
@@ -294,15 +298,26 @@ test("every service has a row and a radar blip on the page before any script run
   }
 });
 
+test("every row's static link is the service's real status page", () => {
+  // v1.13.0: the v1.11.0 rows for Together and Fireworks shipped with
+  // mangled links (status.together.co, status.fireworks.co).
+  for (const s of SHELL) {
+    const row = PAGE.match(new RegExp('<li class="row s-checking" data-id="' + s.id + '">[\\s\\S]*?</li>'));
+    assert.ok(row, s.id);
+    assert.ok(row[0].includes('<h2 class="name"><a href="' + s.status_page + '">'), s.id + ": " + (row[0].match(/<h2 class="name"><a href="([^"]+)"/) || [])[1]);
+  }
+});
+
 test("the page text counts the services right and names the new ones", () => {
   assert.doesNotMatch(PAGE, /\bten AI services\b/i);
-  assert.doesNotMatch(PAGE, /\btwelve AI services\b/i);
-  assert.match(PAGE, /fourteen AI services/);
+  assert.doesNotMatch(PAGE, /\b(twelve|fourteen) AI services\b/i);
+  assert.match(PAGE, /fifteen AI services/);
   const desc = PAGE.match(/<meta name="description" content="([^"]+)">/)[1];
   assert.match(desc, /Together AI/);
   assert.match(desc, /Fireworks AI/);
   assert.match(desc, /OpenRouter/);
   assert.match(desc, /GitHub Copilot/);
+  assert.match(desc, /DeepInfra/);
 });
 
 test("the launched homepage is open to search engines", () => {

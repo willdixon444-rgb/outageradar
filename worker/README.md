@@ -18,6 +18,25 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Step B3: DeepInfra listed, AG review (v1.13.0, Nov 10, 2026)
+
+- DeepInfra: official signal from its documented keyless JSON API,
+  `/api/v1/status`, core service `publicId: "api"` only (not overallStatus,
+  which may include ~171 single models; not the website). `isStale: true` or
+  a missing API entry means Unknown. Status words: OPERATIONAL seen in the
+  sample; others matched by Statuspage spelling rules (UNVERIFIED); anything
+  unrecognised is Unknown, never green. Check unchanged (model list, ~300 ms).
+- GitHub Copilot (AG review): a 400 counts only if the reply says the
+  Authorization header is missing; any other 400 is Unknown and its first
+  characters are kept in the samples. Probe samples now note whether GitHub's
+  `x-github-request-id` header came back (presence only, never the id).
+- Public responses (status.json and incidents.json) are filtered to listed
+  services at the last step too (AG review). No service is hidden now.
+- Site fix: the homepage rows for Together AI and Fireworks AI (v1.11.0) had
+  wrong static links (status.together.co, status.fireworks.co); a test now
+  checks every row's link against the service list.
+- Add `deepinfra` to APPROVED_MAPPINGS after deploying. Normal run: 27 fetches.
+
 ## Step B2: OpenRouter and GitHub Copilot listed (v1.12.0, Nov 10, 2026)
 
 - From the v1.11.0 samples. GitHub Copilot's check (api.githubcopilot.com)

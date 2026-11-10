@@ -41,17 +41,10 @@ afterEach(() => { net.restore(); net = null; clk.restore(); logs.restore(); });
 const savedSamples = () => JSON.parse(kv.store.get([...kv.store.keys()].find((k) => k.startsWith("samples:"))));
 const alerts = () => net.discord.map((d) => d.body.content);
 
-test("this release is v1.12.0 and collects a fresh set of samples", async () => {
-  await runOnce(worker, env);
-  assert.ok(kv.store.has("samples:v1.12.0"));
-  assert.equal(savedSamples().version, "1.12.0");
-});
-
-test("fourteen services are public", async () => {
+test("OpenRouter and GitHub Copilot are public", async () => {
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
-  assert.equal(body.services.length, 14);
-  assert.ok(!body.services.some((s) => s.id === "deepinfra"));
+  for (const id of ["openrouter", "github-copilot"]) assert.ok(body.services.some((s) => s.id === id), id);
 });
 
 // ---------- GitHub Copilot ----------
@@ -133,18 +126,6 @@ test("OpenRouter failing twice is reported as our check failing", async () => {
 
 // ---------- DeepInfra (hidden) and samples ----------
 
-test("DeepInfra's documented status API is sampled once, both addresses", async () => {
-  await runOnce(worker, env);
-  const feeds = savedSamples().feeds;
-  for (const url of ["https://status.deepinfra.com/api/v1/status", "https://status.deepinfra.com/api/v1"]) {
-    const f = feeds.find((x) => x.url === url);
-    assert.ok(f, url);
-    assert.equal(f.service, "deepinfra");
-    assert.equal(f.http_status, 200);
-    assert.ok(!f.skipped, url);
-  }
-});
-
 test("samples already reviewed are not fetched again", async () => {
   await runOnce(worker, env);
   const urls = net.calls.map((c) => c.url);
@@ -159,6 +140,6 @@ test("a normal run makes the same number of requests as before", async () => {
   net.calls.length = 0;
   clk.advance(5);
   await runOnce(worker, env);
-  // 11 feeds + 15 checks.
-  assert.equal(net.calls.length, 26);
+  // v1.13.0: 12 feeds + 15 checks (DeepInfra's feed added).
+  assert.equal(net.calls.length, 27);
 });

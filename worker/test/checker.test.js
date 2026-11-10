@@ -28,7 +28,7 @@ test("without approved mappings every service is published as unknown", async ()
   await runOnce(worker, env);
   const { res, body } = await getStatus(worker, env);
   assert.equal(res.status, 200);
-  assert.equal(body.services.length, 14); // v1.12.0: + OpenRouter, GitHub Copilot
+  assert.equal(body.services.length, 15); // v1.13.0: + DeepInfra
   for (const s of body.services) {
     assert.equal(s.overall, "unknown", s.id);
     assert.equal(s.official.status, "unknown", s.id);

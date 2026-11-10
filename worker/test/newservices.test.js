@@ -11,13 +11,10 @@ import {
   ALL_IDS, memoryKV, json, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx, runOnce, getStatus,
 } from "./helpers.js";
 
-const HIDDEN = ["deepinfra"];
-const NEW_URLS = {
-  "https://api.deepinfra.com/v1/openai/models": () => json({ object: "list", data: [] }, 200),
-  // One-time samples in v1.12.0.
-  "https://status.deepinfra.com/api/v1/status": () => json({ schemaVersion: 1 }),
-  "https://status.deepinfra.com/api/v1": () => json({ schemaVersion: 1 }),
-};
+// v1.13.0: DeepInfra listed; no service is hidden now. The hidden-mode tests
+// stay as a guard for the next service added this way.
+const HIDDEN = [];
+const NEW_URLS = {};
 
 // Counts KV reads and writes, which Cloudflare also counts as subrequests.
 function countingKV(inner) {
@@ -65,7 +62,7 @@ test("hidden services never send Discord alerts, even if their check fails", asy
   for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
   const text = net.discord.map((d) => d.body.content).join("\n");
   // Covers both channels: no outage alert and no feed-problem health message.
-  assert.doesNotMatch(text, /DeepInfra/);
+  for (const id of HIDDEN) assert.doesNotMatch(text, new RegExp(id, "i"), id);
 });
 
 test("hidden services are still checked, and their answers saved in the samples", async () => {
@@ -76,7 +73,6 @@ test("hidden services are still checked, and their answers saved in the samples"
     assert.ok(saved.probes.some((p) => p.service === id), id + " probe sample");
     assert.ok(saved.feeds.some((f) => f.service === id), id + " feed or page sample");
   }
-  assert.equal(saved.probes.find((p) => p.service === "deepinfra").http_status, 200);
 });
 
 test("a sample run downloads each official feed only once", async () => {
@@ -111,9 +107,8 @@ test("a normal run stays well inside the budget", async () => {
   net.calls.length = 0;
   clk.advance(5);
   await runOnce(worker, env);
-  // v1.11.0: 11 feeds (8 + Together, Fireworks, GitHub) + 15 checks = 26.
-  assert.ok(net.calls.length <= 30, "made " + net.calls.length + " outgoing requests");
-  assert.ok(net.calls.length >= 26, "every feed and check still runs: " + net.calls.length);
+  // v1.13.0: 12 feeds + 15 checks = 27.
+  assert.equal(net.calls.length, 27, "every feed and check runs once");
 });
 
 test("saved feed samples from the main run keep their status and body", async () => {

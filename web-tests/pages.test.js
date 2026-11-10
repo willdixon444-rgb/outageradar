@@ -162,8 +162,8 @@ test("llms.txt describes the site, its pages and its data", () => {
   assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/incidents\.json/);
   assert.match(txt, /not affiliated/i);
   assert.doesNotMatch(txt, /\bten\b/i);
-  assert.doesNotMatch(txt, /\btwelve\b/i);
-  assert.match(txt, /fourteen AI services/);
+  assert.doesNotMatch(txt, /\b(twelve|fourteen)\b/i);
+  assert.match(txt, /fifteen AI services/);
   assert.match(txt, /Gemini, DeepSeek and OpenRouter publish no status feed/);
 });
 

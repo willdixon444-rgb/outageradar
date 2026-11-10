@@ -141,6 +141,16 @@ test("the GitHub Copilot page explains there is no drop-in backup, with no code"
   assert.ok(html.includes('href="https://www.githubstatus.com"'));
 });
 
+test("the Copilot page says GitHub publishes Copilot's status, naming the components read", () => {
+  const html = page("github-copilot");
+  assert.doesNotMatch(html, /GitHub Copilot publishes/);
+  assert.doesNotMatch(html, /official GitHub Copilot status page/);
+  assert.match(html, /GitHub publishes Copilot&rsquo;s status on <a href="https:\/\/www\.githubstatus\.com">githubstatus\.com<\/a>/);
+  assert.match(html, /Copilot and Copilot AI Model Providers components/);
+  // AG's draft named components that do not exist in GitHub's feed.
+  assert.doesNotMatch(html, /Copilot Chat|Copilot Pull Requests/);
+});
+
 test("OpenRouter is tracked now, so its backup boxes show live status", () => {
   assert.equal(BACKUPS.find((b) => b.id === "openrouter").status, "openrouter");
   const html = page("claude");

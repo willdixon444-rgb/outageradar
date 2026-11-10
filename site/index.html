@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>OutageRadar: live status of AI services</title>
-<meta name="description" content="Live status of ChatGPT, Claude, Gemini, Grok, Mistral, Perplexity, DeepSeek, Cohere, Groq, Hugging Face, Together AI, Fireworks AI, OpenRouter and GitHub Copilot, from each provider's official status feed plus OutageRadar's own independent checks.">
+<meta name="description" content="Live status of ChatGPT, Claude, Gemini, Grok, Mistral, Perplexity, DeepSeek, Cohere, Groq, Hugging Face, Together AI, Fireworks AI, OpenRouter, GitHub Copilot and DeepInfra, from each provider's official status feed plus OutageRadar's own independent checks.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%2307140e' stroke='%234be08a' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%234be08a'/%3E%3Ccircle cx='44' cy='20' r='4' fill='%234be08a'/%3E%3Ccircle cx='20' cy='42' r='4' fill='%23ffb547'/%3E%3C/svg%3E">
 <!-- OutageRadar status board (launched Nov 5, 2026). Data: data.liveoutageradar.com/status.json
      Rollback to the coming-soon page: see launch-backup/README.md in the repo. -->
@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OutageRadar">
 <meta property="og:title" content="OutageRadar: is ChatGPT, Claude or Gemini down?">
-<meta property="og:description" content="Live status of fourteen AI services, from each provider's official status feed plus our own independent check.">
+<meta property="og:description" content="Live status of fifteen AI services, from each provider's official status feed plus our own independent check.">
 <meta property="og:url" content="https://liveoutageradar.com/">
 <meta property="og:image" content="https://liveoutageradar.com/og.png">
 <meta property="og:image:width" content="1200">
@@ -169,6 +169,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
           <circle class="blip s-checking" data-id="fireworks" cx="290" cy="326" r="9"/>
           <circle class="blip s-checking" data-id="openrouter" cx="126" cy="338" r="9"/>
           <circle class="blip s-checking" data-id="github-copilot" cx="252" cy="176" r="9"/>
+          <circle class="blip s-checking" data-id="deepinfra" cx="190" cy="240" r="9"/>
         </g>
         <circle cx="200" cy="200" r="5" fill="#4be08a"/>
       </svg>
@@ -176,7 +177,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
     </div>
     <div>
       <h1 class="summary" id="summary" aria-live="polite">Checking services&hellip;</h1>
-      <p class="lede">Live status of fourteen AI services, from each provider&rsquo;s official status feed plus our own independent check. Updates every few minutes.</p>
+      <p class="lede">Live status of fifteen AI services, from each provider&rsquo;s official status feed plus our own independent check. Updates every few minutes.</p>
     </div>
   </section>
 
@@ -216,10 +217,10 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
       <h2 class="name"><a href="https://status.huggingface.co">Hugging Face</a></h2>
       <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/huggingface/">Hugging Face outage history</a></p></li>
     <li class="row s-checking" data-id="together"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
-      <h2 class="name"><a href="https://status.together.co">Together AI</a></h2>
+      <h2 class="name"><a href="https://status.together.ai">Together AI</a></h2>
       <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/together/">Together AI outage history</a></p></li>
     <li class="row s-checking" data-id="fireworks"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
-      <h2 class="name"><a href="https://status.fireworks.co">Fireworks AI</a></h2>
+      <h2 class="name"><a href="https://status.fireworks.ai">Fireworks AI</a></h2>
       <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/fireworks/">Fireworks AI outage history</a></p></li>
     <li class="row s-checking" data-id="openrouter"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://status.openrouter.ai">OpenRouter</a></h2>
@@ -227,6 +228,9 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
     <li class="row s-checking" data-id="github-copilot"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
       <h2 class="name"><a href="https://www.githubstatus.com">GitHub Copilot</a></h2>
       <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/github-copilot/">GitHub Copilot outage history</a></p></li>
+    <li class="row s-checking" data-id="deepinfra"><span class="pill"><span class="pi" aria-hidden="true">&hellip;</span><span class="pl">Checking&hellip;</span></span>
+      <h2 class="name"><a href="https://status.deepinfra.com">DeepInfra</a></h2>
+      <p class="official">Official status: checking&hellip;</p><p class="probe"><span class="pt">Our check: checking&hellip;</span> <span class="pc"></span></p><p class="note" hidden></p><p class="hist"><span class="ht"></span> <a class="hl" href="/status/deepinfra/">DeepInfra outage history</a></p></li>
   </ul>
 
   <aside class="partner" aria-label="Related tool">
