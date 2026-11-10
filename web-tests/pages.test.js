@@ -106,6 +106,15 @@ test("each page links to the official status page, the board and the other nine 
   }
 });
 
+test("each history page offers that service's RSS feed", () => {
+  for (const s of SHELL) {
+    const html = page(s.id);
+    const url = "https://data.liveoutageradar.com/feed/" + s.id + ".xml";
+    assert.ok(html.includes('<link rel="alternate" type="application/rss+xml" title="OutageRadar: ' + s.name.replace(/&/g, "&amp;") + ' incidents (RSS)" href="' + url + '">'), s.id);
+    assert.ok(html.includes('<a href="' + url + '">RSS feed</a>'), s.id);
+  }
+});
+
 test("each page says from when history is logged before any script runs", () => {
   for (const s of SHELL) assert.ok(page(s.id).includes("History logged by OutageRadar since " + PAGE_LOG_START), s.id);
 });
@@ -160,6 +169,8 @@ test("llms.txt describes the site, its pages and its data", () => {
   for (const s of SHELL) assert.ok(txt.includes(URL_FOR(s.id)), s.id);
   assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/status\.json/);
   assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/incidents\.json/);
+  assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/feed\.xml/);
+  assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/feed\/<id>\.xml/);
   assert.match(txt, /not affiliated/i);
   assert.doesNotMatch(txt, /\bten\b/i);
   assert.doesNotMatch(txt, /\b(twelve|fourteen)\b/i);

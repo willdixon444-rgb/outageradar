@@ -38,9 +38,8 @@ const deep = async (over) => {
 };
 const savedSamples = () => JSON.parse(kv.store.get([...kv.store.keys()].find((k) => k.startsWith("samples:"))));
 
-test("this release is v1.13.0 and fifteen services are public", async () => {
+test("fifteen services are public", async () => {
   await runOnce(worker, env);
-  assert.ok(kv.store.has("samples:v1.13.0"));
   const { body } = await getStatus(worker, env);
   assert.equal(body.services.length, 15);
 });

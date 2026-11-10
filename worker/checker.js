@@ -12,6 +12,7 @@
 //                     (v1.6: each service also carries "incidents": when the
 //                     log started and the last incident, see incident log)
 //   GET /incidents.json  each approved service's incident log, newest first
+//   GET /feed.xml, /feed/<id>.xml  RSS 2.0 feeds of incidents (v1.14.0)
 //                     (v1.7.0, for the /status/<id>/ history pages)
 //   POST /v, /c       page-view / link-click pings from our site (daily totals
 //                     in D1; no IP, user agent, cookie or ID stored)
@@ -40,7 +41,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.13.0";
+const VERSION = "1.14.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -947,6 +948,91 @@ function buildIncidentsPublic(state, now) {
     }
   }
   return { schema: 1, served_at_utc: iso(now), services };
+}
+
+// ---------- RSS feeds (v1.14.0) ----------
+//
+// GET /feed.xml (all services) and /feed/<id>.xml (one service): RSS 2.0,
+// built on request from the incident log, newest first. One item per
+// incident, keyed by service and start time, and updated in place when it
+// ends (owner's choice "A"). Only listed services with a log appear. Nothing
+// about readers is stored. Readers may cache for 5 minutes (the data changes
+// at most every 5 minutes); this keeps KV reads (free plan: 100,000 a day,
+// per Cloudflare's docs) low.
+
+const SITE_ORIGIN = "https://liveoutageradar.com";
+const DATA_ORIGIN = "https://data.liveoutageradar.com";
+const FEED_MAX_ITEMS = 50;
+const FEED_CACHE = "public, max-age=300";
+
+function xmlText(value) {
+  return String(value)
+    .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+function utcMinute(ms) {
+  return iso(ms).slice(0, 16).replace("T", " ") + " UTC";
+}
+
+function lengthText(minutes) {
+  if (minutes < 60) return minutes + " min";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h + " h" + (m ? " " + m + " min" : "");
+}
+
+function feedItem(service, x) {
+  const label = Object.prototype.hasOwnProperty.call(LABELS, x.worst) ? LABELS[x.worst] : "Incident";
+  const open = x.end_ms === null;
+  const about = x.end_confirmed === false ? "about " : "";
+  const length = open ? "" : about + lengthText(Math.max(0, Math.round((x.end_ms - x.start_ms) / MIN)));
+  const title = service.name + ": " + label + (open ? " (ongoing)" : ", " + length + " (resolved)");
+  const parts = ["Started " + utcMinute(x.start_ms) + "."];
+  parts.push(open ? "Still ongoing." : "Ended " + utcMinute(x.end_ms) + " (" + length + ").");
+  parts.push(x.kind === "official"
+    ? "Confirmed by the provider's official status."
+    : "Seen by our own check only; not confirmed by the provider.");
+  if (x.end_confirmed === false) parts.push("End not confirmed: no clear signal for 2 hours.");
+  parts.push("Times are when OutageRadar's checker saw the change, within 5 minutes.");
+  const link = SITE_ORIGIN + "/status/" + service.id + "/";
+  return "    <item>\n" +
+    "      <title>" + xmlText(title) + "</title>\n" +
+    "      <link>" + link + "</link>\n" +
+    "      <guid isPermaLink=\"false\">outageradar:" + service.id + ":" + iso(x.start_ms) + "</guid>\n" +
+    "      <pubDate>" + new Date(x.start_ms).toUTCString() + "</pubDate>\n" +
+    "      <category>" + xmlText(service.name) + "</category>\n" +
+    "      <description>" + xmlText(parts.join(" ")) + "</description>\n" +
+    "    </item>\n";
+}
+
+function buildFeed(state, now, onlyId) {
+  const log = state && typeof state === "object" ? cleanIncidentLog(state) : { incidents: {}, since: {} };
+  const rows = [];
+  for (const s of SERVICES) {
+    if (!isListed(s) || (onlyId && s.id !== onlyId) || typeof log.since[s.id] !== "number") continue;
+    for (const x of log.incidents[s.id]) rows.push({ s, x });
+  }
+  rows.sort((a, b) => b.x.start_ms - a.x.start_ms);
+  const one = onlyId ? SERVICES.find((s) => s.id === onlyId) : null;
+  const title = one ? "OutageRadar: " + one.name + " incidents" : "OutageRadar: AI service incidents";
+  const link = one ? SITE_ORIGIN + "/status/" + one.id + "/" : SITE_ORIGIN + "/";
+  const self = DATA_ORIGIN + (one ? "/feed/" + one.id + ".xml" : "/feed.xml");
+  const about = (one ? one.name : "AI service") + " outages and problems seen by OutageRadar: the provider's official status plus our own API check, every 5 minutes.";
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n' +
+    "  <channel>\n" +
+    "    <title>" + xmlText(title) + "</title>\n" +
+    "    <link>" + link + "</link>\n" +
+    "    <description>" + xmlText(about) + "</description>\n" +
+    '    <atom:link href="' + self + '" rel="self" type="application/rss+xml"/>\n' +
+    "    <language>en</language>\n" +
+    "    <lastBuildDate>" + new Date(now).toUTCString() + "</lastBuildDate>\n" +
+    "    <ttl>5</ttl>\n" +
+    rows.slice(0, FEED_MAX_ITEMS).map((r) => feedItem(r.s, r.x)).join("") +
+    "  </channel>\n" +
+    "</rss>\n";
 }
 
 async function runCheck(env) {
@@ -2019,6 +2105,24 @@ async function handleFetch(request, env) {
       console.warn("history read failed");
     }
     return respond(JSON.stringify(buildIncidentsPublic(state, Date.now())), 200, cors);
+  }
+
+  if (url.pathname === "/feed.xml" || url.pathname.startsWith("/feed/")) {
+    let only = null;
+    if (url.pathname !== "/feed.xml") {
+      const m = url.pathname.match(/^\/feed\/([a-z0-9-]+)\.xml$/);
+      if (!m || !PUBLIC_IDS.has(m[1])) return respond(JSON.stringify({ error: "not found" }), 404, cors);
+      only = m[1];
+    }
+    let state = null;
+    try {
+      if (!env || !env.KV) throw new Error("no KV");
+      state = await cachedState(env.KV);
+    } catch (err) {
+      console.warn("feed read failed");
+      return respond("Feed temporarily unavailable.", 503, { "cache-control": "no-store" }, "text/plain; charset=utf-8");
+    }
+    return respond(buildFeed(state, Date.now(), only), 200, { "cache-control": FEED_CACHE }, "application/rss+xml; charset=utf-8");
   }
 
   if (url.pathname === "/health") {

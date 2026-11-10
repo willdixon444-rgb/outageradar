@@ -322,6 +322,11 @@ test("the page text counts the services right and names the new ones", () => {
 
 // ---------- site v1.15.0: layout and the errors link ----------
 
+test("the homepage offers the all-services RSS feed, to readers and to people", () => {
+  assert.ok(PAGE.includes('<link rel="alternate" type="application/rss+xml" title="OutageRadar: AI service incidents (RSS)" href="https://data.liveoutageradar.com/feed.xml">'));
+  assert.ok(PAGE.includes('<a href="https://data.liveoutageradar.com/feed.xml">Incident RSS feed</a>'));
+});
+
 test("a clear link to the API error pages sits at the top, before the list", () => {
   const link = PAGE.indexOf('<a class="errlink" href="/errors/">Got an API error like 529 or 429? See what it means &rarr;</a>');
   assert.ok(link > 0, "link present");
@@ -374,7 +379,9 @@ test("the board really stores nothing in the browser (the privacy page promises 
 
 test("the board loads no third-party scripts, fonts or images", () => {
   const external = (PAGE.match(/<(script|link|img)\b[^>]*(src|href)="https?:\/\/[^"]+"/g) || [])
-    .filter((tag) => !/(src|href)="https:\/\/liveoutageradar\.com\//.test(tag));
+    .filter((tag) => !/(src|href)="https:\/\/liveoutageradar\.com\//.test(tag))
+    // v1.16.0: a feed link (rel="alternate") loads nothing; it only tells readers where our feed is.
+    .filter((tag) => !/^<link rel="alternate" type="application\/rss\+xml" title="[^"]+" href="https:\/\/data\.liveoutageradar\.com\/feed\.xml">$/.test(tag + ">"));
   assert.deepEqual(external, []);
 });
 

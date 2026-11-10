@@ -42,6 +42,8 @@ What common AI API errors mean, whether the provider or the caller is at fault, 
 ## Data
 
 - https://data.liveoutageradar.com/status.json: current status of every service (overall, official status, our check, last incident). Refreshed every 5 minutes.
+- https://data.liveoutageradar.com/feed.xml: RSS 2.0 feed of incidents across all services, newest first. One item per incident, updated in place when it ends.
+- https://data.liveoutageradar.com/feed/<id>.xml: the same for one service (ids as in the page addresses above, e.g. feed/claude.xml).
 - https://data.liveoutageradar.com/incidents.json: each service's incident log, newest first (start, end, worst state, whether the provider confirmed it). Logging started November 8, 2026.
 
 ## Notes

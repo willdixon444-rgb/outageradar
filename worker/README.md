@@ -18,6 +18,24 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## RSS feeds of incidents (v1.14.0, Nov 10, 2026)
+
+- `GET /feed.xml` (all services, newest first, at most 50 items) and
+  `GET /feed/<id>.xml` (one service; unknown or unlisted ids are 404). RSS 2.0
+  with an atom self link, built on request from the incident log in
+  `state:v1`: no change to the 5-minute run or its request budget.
+- One item per incident, guid `outageradar:<id>:<start>`, dated by its start,
+  updated in place when it ends ("(ongoing)" becomes "42 min (resolved)").
+  Says whether the provider confirmed it or only our check saw it, and when
+  the end is not confirmed. Everything is XML-escaped; odd saved data can't
+  break the feed.
+- `cache-control: public, max-age=300`. KV free plan: 100,000 reads a day
+  (Cloudflare docs, checked Nov 10, 2026); feed reads go through the same
+  30-second in-memory cache as status.json. If saved data can't be read the
+  feed answers 503 (no-store) instead of an empty feed.
+- Nothing about readers is stored. Site v1.16.0 links the feeds from the
+  homepage footer and every history page, with `rel="alternate"` tags.
+
 ## Step B3: DeepInfra listed, AG review (v1.13.0, Nov 10, 2026)
 
 - DeepInfra: official signal from its documented keyless JSON API,
