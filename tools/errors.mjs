@@ -33,7 +33,8 @@ const SHAPE_GEMINI = (code, status) => JSON.stringify({
 
 export const ERRORS = [
   {
-    slug: "claude-529-overloaded", service: "claude", provider: "Anthropic", api: "Claude API",
+    slug: "claude-529-overloaded",
+    note: "Anthropic&rsquo;s servers are overloaded. It&rsquo;s on their side.", service: "claude", provider: "Anthropic", api: "Claude API",
     code: 529, name: "overloaded_error", bucket: "server",
     title: "Claude API 529 overloaded_error: what it means and what to do",
     h1: "Claude API error 529: overloaded_error",
@@ -52,7 +53,8 @@ export const ERRORS = [
     docs: DOCS.claude,
   },
   {
-    slug: "claude-429-rate-limit", service: "claude", provider: "Anthropic", api: "Claude API",
+    slug: "claude-429-rate-limit",
+    note: "You hit a rate limit or your tier&rsquo;s monthly spend cap.", service: "claude", provider: "Anthropic", api: "Claude API",
     code: 429, name: "rate_limit_error", bucket: "rate",
     title: "Claude API 429 rate_limit_error: what it means and what to do",
     h1: "Claude API error 429: rate_limit_error",
@@ -73,7 +75,8 @@ export const ERRORS = [
     more: [DOCS.claudeLimits],
   },
   {
-    slug: "openai-503-overloaded", service: "openai", provider: "OpenAI", api: "OpenAI API",
+    slug: "openai-503-overloaded",
+    note: "The model is out of capacity right now. It&rsquo;s on their side.", service: "openai", provider: "OpenAI", api: "OpenAI API",
     code: 503, name: "server_is_overloaded", bucket: "server",
     title: "OpenAI API 503 server_is_overloaded: what it means and what to do",
     h1: "OpenAI API error 503: server_is_overloaded",
@@ -91,7 +94,8 @@ export const ERRORS = [
     docs: DOCS.openai,
   },
   {
-    slug: "openai-429-rate-limit", service: "openai", provider: "OpenAI", api: "OpenAI API",
+    slug: "openai-429-rate-limit",
+    note: "You hit your rate limit, or your traffic grew too fast.", service: "openai", provider: "OpenAI", api: "OpenAI API",
     code: 429, name: "rate limit / slow_down", bucket: "rate",
     title: "OpenAI API 429 rate limit and slow_down: what they mean and what to do",
     h1: "OpenAI API error 429: rate limit reached or slow_down",
@@ -112,7 +116,8 @@ export const ERRORS = [
     more: [DOCS.openaiLimits],
   },
   {
-    slug: "openai-insufficient-quota", service: "openai", provider: "OpenAI", api: "OpenAI API",
+    slug: "openai-insufficient-quota",
+    note: "Billing or quota on your account. Not an outage.", service: "openai", provider: "OpenAI", api: "OpenAI API",
     code: 429, name: "insufficient_quota", bucket: "account",
     title: "OpenAI insufficient_quota: \"You exceeded your current quota\" explained",
     h1: "OpenAI API: You exceeded your current quota (insufficient_quota)",
@@ -133,7 +138,8 @@ export const ERRORS = [
     docs: DOCS.openai,
   },
   {
-    slug: "gemini-429-resource-exhausted", service: "gemini", provider: "Google", api: "Gemini API",
+    slug: "gemini-429-resource-exhausted",
+    note: "You went over one of your Gemini rate limits.", service: "gemini", provider: "Google", api: "Gemini API",
     code: 429, name: "RESOURCE_EXHAUSTED", bucket: "rate",
     title: "Gemini API 429 RESOURCE_EXHAUSTED: what it means and what to do",
     h1: "Gemini API error 429: RESOURCE_EXHAUSTED",
@@ -152,7 +158,8 @@ export const ERRORS = [
     more: [DOCS.geminiLimits, DOCS.geminiRetry],
   },
   {
-    slug: "gemini-503-unavailable", service: "gemini", provider: "Google", api: "Gemini API",
+    slug: "gemini-503-unavailable",
+    note: "Google&rsquo;s service is overloaded or down. It&rsquo;s on their side.", service: "gemini", provider: "Google", api: "Gemini API",
     code: 503, name: "UNAVAILABLE", bucket: "server",
     title: "Gemini API 503 UNAVAILABLE: what it means and what to do",
     h1: "Gemini API error 503: UNAVAILABLE",
@@ -173,7 +180,8 @@ export const ERRORS = [
     more: [DOCS.geminiRetry],
   },
   {
-    slug: "deepseek-503-server-overloaded", service: "deepseek", provider: "DeepSeek", api: "DeepSeek API",
+    slug: "deepseek-503-server-overloaded",
+    note: "DeepSeek&rsquo;s servers are busy with high traffic. It&rsquo;s on their side.", service: "deepseek", provider: "DeepSeek", api: "DeepSeek API",
     code: 503, name: "Server Overloaded", bucket: "server",
     title: "DeepSeek API 503 Server Overloaded: what it means and what to do",
     h1: "DeepSeek API error 503: Server Overloaded",
@@ -393,6 +401,15 @@ export function renderErrorPage(e) {
 `;
 }
 
+// v1.15.0: one error per line with a short note, not wrapping side-by-side links.
+const HUB_STYLES = `
+.hub h2{margin:1.5rem 0 .4rem;font-size:1.15rem}
+.errlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.errlist li{padding:.65rem 0;border-bottom:1px solid var(--line)}
+.errlist a{font-weight:600}
+.errlist .en{display:block;margin-top:.15rem;color:var(--muted);font-size:.9rem}
+`;
+
 export function renderErrorsHub() {
   const url = SITE_URL + "/errors/";
   const title = "AI API errors explained: Claude, OpenAI, Gemini, DeepSeek";
@@ -411,10 +428,10 @@ export function renderErrorsHub() {
   for (const e of ERRORS) {
     let g = groups.find((x) => x.api === e.api);
     if (!g) groups.push(g = { api: e.api, items: [] });
-    g.items.push('<li><a href="/errors/' + e.slug + '/">' + esc(e.h1) + "</a></li>");
+    g.items.push('<li><a href="/errors/' + e.slug + '/">' + esc(e.h1) + '</a><span class="en">' + e.note + "</span></li>");
   }
-  const lists = groups.map((g) => '<h2>' + esc(g.api) + "</h2>\n    <ul>\n      " + g.items.join("\n      ") + "\n    </ul>").join("\n    ");
-  return `${head({ title, description, url, ld, extraStyles: "" })}
+  const lists = groups.map((g) => "<h2>" + esc(g.api) + '</h2>\n    <ul class="errlist">\n      ' + g.items.join("\n      ") + "\n    </ul>").join("\n    ");
+  return `${head({ title, description, url, ld, extraStyles: HUB_STYLES })}
 <body>
 <div class="wrap">
   <header class="top">
@@ -423,7 +440,7 @@ export function renderErrorsHub() {
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">All AI services</a> / API errors</nav>
   <h1 class="page-h1">AI API errors explained</h1>
   <p class="lede">What each error means, whether it is on the provider&rsquo;s side or yours, and what to do. Every page shows that provider&rsquo;s live status, and facts come from the provider&rsquo;s own docs (last checked ${LAST_CHECKED}).</p>
-  <nav class="sec others" aria-label="API errors">
+  <nav class="sec hub" aria-label="API errors">
     ${lists}
   </nav>
   ${FOOTER}

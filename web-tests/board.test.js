@@ -320,6 +320,31 @@ test("the page text counts the services right and names the new ones", () => {
   assert.match(desc, /DeepInfra/);
 });
 
+// ---------- site v1.15.0: layout and the errors link ----------
+
+test("a clear link to the API error pages sits at the top, before the list", () => {
+  const link = PAGE.indexOf('<a class="errlink" href="/errors/">Got an API error like 529 or 429? See what it means &rarr;</a>');
+  assert.ok(link > 0, "link present");
+  assert.ok(link > PAGE.indexOf('class="hero"') && link < PAGE.indexOf('id="services"'), "inside the intro, above the services");
+});
+
+test("desktop shows the services in two columns; phones keep one long column", () => {
+  const css = PAGE.match(/<style>([\s\S]*?)<\/style>/)[1];
+  const block = (q) => {
+    const at = css.indexOf("@media " + q + "{");
+    assert.ok(at >= 0, "missing @media " + q);
+    let depth = 0, i = css.indexOf("{", at);
+    const start = i;
+    for (; i < css.length; i++) { if (css[i] === "{") depth++; else if (css[i] === "}" && --depth === 0) break; }
+    return css.slice(start + 1, i);
+  };
+  const wide = block("(min-width:56rem)");
+  assert.match(wide, /#services\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(wide, /#services \.row\{grid-template-columns:minmax\(0,1fr\);row-gap:\.15rem;align-content:start\}/, "cards stack, content pinned to the top");
+  assert.doesNotMatch(block("(max-width:40rem)"), /#services|repeat\(2/, "phones: one column");
+  assert.doesNotMatch(css.replace(/@media[^{]*\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, ""), /#services\{display:grid/, "grid only on wide screens");
+});
+
 test("the launched homepage is open to search engines", () => {
   assert.doesNotMatch(PAGE, /noindex/);
   assert.match(PAGE, /<link rel="canonical" href="https:\/\/liveoutageradar\.com\/">/);

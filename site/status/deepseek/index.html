@@ -123,6 +123,16 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .about p{margin:0 0 .6rem;max-width:72ch}
 .legal{margin-top:1.25rem;font-size:.85rem}
 
+.errlink{display:inline-block;margin-top:.75rem;color:var(--text);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.errlink:hover{color:var(--op)}
+
+/* v1.15.0: wide screens show the services in two columns of stacked cards;
+   phones and small tablets keep one column. Problems still sort first. */
+@media (min-width:56rem){
+  #services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:1.5rem}
+  #services .row{grid-template-columns:minmax(0,1fr);row-gap:.15rem;align-content:start}
+  #services .row .pill{grid-row:auto;justify-self:start;margin-bottom:.4rem}
+}
 @media (max-width:40rem){
   .hero{grid-template-columns:minmax(0,6.5rem) minmax(0,1fr);gap:1rem;padding:1.25rem 0 1rem}
   .summary{font-size:1.3rem}

@@ -123,6 +123,16 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .about p{margin:0 0 .6rem;max-width:72ch}
 .legal{margin-top:1.25rem;font-size:.85rem}
 
+.errlink{display:inline-block;margin-top:.75rem;color:var(--text);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.errlink:hover{color:var(--op)}
+
+/* v1.15.0: wide screens show the services in two columns of stacked cards;
+   phones and small tablets keep one column. Problems still sort first. */
+@media (min-width:56rem){
+  #services{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:1.5rem}
+  #services .row{grid-template-columns:minmax(0,1fr);row-gap:.15rem;align-content:start}
+  #services .row .pill{grid-row:auto;justify-self:start;margin-bottom:.4rem}
+}
 @media (max-width:40rem){
   .hero{grid-template-columns:minmax(0,6.5rem) minmax(0,1fr);gap:1rem;padding:1.25rem 0 1rem}
   .summary{font-size:1.3rem}
@@ -169,7 +179,11 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .code button.copy{position:absolute;top:.4rem;right:.4rem;font:inherit;font-size:.8rem;padding:.25rem .6rem;border-radius:6px;border:1px solid var(--line);background:#0f241a;color:var(--text);cursor:pointer}
 .code button.copy:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 @media (max-width:40rem){.history li{grid-template-columns:minmax(0,1fr) auto}.history .when{grid-column:1 / -1;order:3}}
-
+.hub h2{margin:1.5rem 0 .4rem;font-size:1.15rem}
+.errlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.errlist li{padding:.65rem 0;border-bottom:1px solid var(--line)}
+.errlist a{font-weight:600}
+.errlist .en{display:block;margin-top:.15rem;color:var(--muted);font-size:.9rem}
 </style>
 </head>
 <body>
@@ -180,26 +194,26 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">All AI services</a> / API errors</nav>
   <h1 class="page-h1">AI API errors explained</h1>
   <p class="lede">What each error means, whether it is on the provider&rsquo;s side or yours, and what to do. Every page shows that provider&rsquo;s live status, and facts come from the provider&rsquo;s own docs (last checked Nov 10, 2026).</p>
-  <nav class="sec others" aria-label="API errors">
+  <nav class="sec hub" aria-label="API errors">
     <h2>Claude API</h2>
-    <ul>
-      <li><a href="/errors/claude-529-overloaded/">Claude API error 529: overloaded_error</a></li>
-      <li><a href="/errors/claude-429-rate-limit/">Claude API error 429: rate_limit_error</a></li>
+    <ul class="errlist">
+      <li><a href="/errors/claude-529-overloaded/">Claude API error 529: overloaded_error</a><span class="en">Anthropic&rsquo;s servers are overloaded. It&rsquo;s on their side.</span></li>
+      <li><a href="/errors/claude-429-rate-limit/">Claude API error 429: rate_limit_error</a><span class="en">You hit a rate limit or your tier&rsquo;s monthly spend cap.</span></li>
     </ul>
     <h2>OpenAI API</h2>
-    <ul>
-      <li><a href="/errors/openai-503-overloaded/">OpenAI API error 503: server_is_overloaded</a></li>
-      <li><a href="/errors/openai-429-rate-limit/">OpenAI API error 429: rate limit reached or slow_down</a></li>
-      <li><a href="/errors/openai-insufficient-quota/">OpenAI API: You exceeded your current quota (insufficient_quota)</a></li>
+    <ul class="errlist">
+      <li><a href="/errors/openai-503-overloaded/">OpenAI API error 503: server_is_overloaded</a><span class="en">The model is out of capacity right now. It&rsquo;s on their side.</span></li>
+      <li><a href="/errors/openai-429-rate-limit/">OpenAI API error 429: rate limit reached or slow_down</a><span class="en">You hit your rate limit, or your traffic grew too fast.</span></li>
+      <li><a href="/errors/openai-insufficient-quota/">OpenAI API: You exceeded your current quota (insufficient_quota)</a><span class="en">Billing or quota on your account. Not an outage.</span></li>
     </ul>
     <h2>Gemini API</h2>
-    <ul>
-      <li><a href="/errors/gemini-429-resource-exhausted/">Gemini API error 429: RESOURCE_EXHAUSTED</a></li>
-      <li><a href="/errors/gemini-503-unavailable/">Gemini API error 503: UNAVAILABLE</a></li>
+    <ul class="errlist">
+      <li><a href="/errors/gemini-429-resource-exhausted/">Gemini API error 429: RESOURCE_EXHAUSTED</a><span class="en">You went over one of your Gemini rate limits.</span></li>
+      <li><a href="/errors/gemini-503-unavailable/">Gemini API error 503: UNAVAILABLE</a><span class="en">Google&rsquo;s service is overloaded or down. It&rsquo;s on their side.</span></li>
     </ul>
     <h2>DeepSeek API</h2>
-    <ul>
-      <li><a href="/errors/deepseek-503-server-overloaded/">DeepSeek API error 503: Server Overloaded</a></li>
+    <ul class="errlist">
+      <li><a href="/errors/deepseek-503-server-overloaded/">DeepSeek API error 503: Server Overloaded</a><span class="en">DeepSeek&rsquo;s servers are busy with high traffic. It&rsquo;s on their side.</span></li>
     </ul>
   </nav>
   <footer class="about">

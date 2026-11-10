@@ -195,6 +195,15 @@ print("PY_OK")
 
 // ---------- links, sitemap, llms.txt ----------
 
+test("the hub lists one error per line, each with a short plain note", () => {
+  const hub = SITE("errors/index.html");
+  assert.doesNotMatch(hub, /class="sec others"/, "no wrapping side-by-side links");
+  for (const e of ERRORS) {
+    assert.ok(typeof e.note === "string" && e.note.length >= 20 && e.note.length <= 90, e.slug);
+    assert.ok(hub.includes('<li><a href="/errors/' + e.slug + '/">' + e.h1 + '</a><span class="en">' + e.note + "</span></li>"), e.slug);
+  }
+});
+
 test("the hub lists every error page; history pages list their provider's errors", () => {
   const hub = SITE("errors/index.html");
   for (const e of ERRORS) assert.ok(hub.includes('href="/errors/' + e.slug + '/"'), e.slug);
