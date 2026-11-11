@@ -4,7 +4,7 @@ Discord, Slack and others. Site v1.18.1.
 The service count and the "+ N more" chip come from the board's own list in
 site/board.js, so the image can't go stale when services are added.
 
-  python3 tools/og_image.py           write site/og.png
+  python3 tools/og_image.py           write site/og.png and stamp the homepage
   python3 tools/og_image.py --count   print the service count it uses
   python3 tools/og_image.py --verify  exit 1 if site/og.png is out of date
 
@@ -101,6 +101,21 @@ def render():
     return img.resize((1200, 630), Image.LANCZOS).convert("RGB")
 
 
+def stamp_homepage():
+    """Point the homepage's og:image at the image's fingerprint (v1.18.2)."""
+    import hashlib
+    with open(OUT, "rb") as fh:
+        fp = hashlib.sha256(fh.read()).hexdigest()[:8]
+    page = os.path.join(ROOT, "site", "index.html")
+    with open(page, encoding="utf-8") as fh:
+        html = fh.read()
+    new = re.sub(r'<meta property="og:image" content="https://liveoutageradar\.com/og\.png(\?v=[0-9a-f]{8})?">',
+                 '<meta property="og:image" content="https://liveoutageradar.com/og.png?v=' + fp + '">', html)
+    with open(page, "w", encoding="utf-8") as fh:
+        fh.write(new)
+    return fp
+
+
 def main(argv):
     if "--count" in argv:
         print(service_count())
@@ -117,7 +132,9 @@ def main(argv):
             return 1
         return 0
     img.save(OUT, optimize=True)
-    print("wrote site/og.png (" + str(service_count()) + " services)")
+    fp = stamp_homepage()
+    print("wrote site/og.png (" + str(service_count()) + " services), fingerprint " + fp)
+    print("now run: node tools/status-pages.mjs (updates the other pages' image address)")
     return 0
 
 

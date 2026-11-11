@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 // Display-logic tests for the board. Nothing here ships to the site.
@@ -406,7 +408,7 @@ test("the sitemap lists the homepage and the privacy page", () => {
 
 test("the homepage has a link-preview card for social sites", () => {
   assert.match(PAGE, /<meta property="og:title" content="[^"]+">/);
-  assert.match(PAGE, /<meta property="og:image" content="https:\/\/liveoutageradar\.com\/og\.png">/);
+  assert.match(PAGE, /<meta property="og:image" content="https:\/\/liveoutageradar\.com\/og\.png\?v=[0-9a-f]{8}">/);
   assert.match(PAGE, /<meta name="twitter:card" content="summary_large_image">/);
   const png = readFileSync(new URL("../site/og.png", import.meta.url));
   assert.equal(png.subarray(1, 4).toString(), "PNG");
@@ -426,6 +428,31 @@ test("the sharing image is up to date with the service list", () => {
   const alt = PAGE.match(/<meta property="og:image:alt" content="([^"]+)">/)[1];
   assert.match(alt, new RegExp("\\b" + SHELL.length + " AI services\\b"));
   assert.doesNotMatch(alt, /\bten\b/i);
+});
+
+// v1.18.2: X, Discord, Slack and Bluesky keep a sharing image by its address,
+// so the address carries a fingerprint of the image: a new image, a new address.
+test("every page points to the current sharing image by its fingerprint", () => {
+  const png = readFileSync(new URL("../site/og.png", import.meta.url));
+  const want = "https://liveoutageradar.com/og.png?v=" + createHash("sha256").update(png).digest("hex").slice(0, 8);
+  const root = new URL("../site/", import.meta.url);
+  const pages = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const u = new URL(e.name + (e.isDirectory() ? "/" : ""), dir);
+      if (e.isDirectory()) walk(u); else if (e.name.endsWith(".html")) pages.push(u);
+    }
+  };
+  walk(root);
+  let withImage = 0;
+  for (const u of pages) {
+    const html = readFileSync(u, "utf8");
+    const tags = [...html.matchAll(/<meta property="og:image" content="([^"]+)">/g)].map((m) => m[1]);
+    if (!tags.length) continue;
+    withImage += 1;
+    assert.deepEqual(tags, [want], fileURLToPath(u));
+  }
+  assert.ok(withImage >= 26, "found " + withImage + " pages with a sharing image");
 });
 
 test("the old preview address forwards to the homepage and is not indexed", () => {

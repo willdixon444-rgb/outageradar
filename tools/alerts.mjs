@@ -5,7 +5,7 @@
 // unsubscribe pages stay noindex: they are personal links.
 
 import { SHELL } from "../site/board.js";
-import { esc, boardStyles, PAGE_STYLES } from "./status-pages.mjs";
+import { esc, boardStyles, PAGE_STYLES, OG_IMAGE } from "./status-pages.mjs";
 
 const ALERT_STYLES = `
 .form{margin:1rem 0 1.5rem}
@@ -33,7 +33,7 @@ function head(title, page) {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(page.description)}">
 <meta property="og:url" content="${page.url}">
-<meta property="og:image" content="https://liveoutageradar.com/og.png">`
+<meta property="og:image" content="${OG_IMAGE}">`
     : `<meta name="robots" content="noindex, nofollow">`;
   return `<!doctype html>
 <html lang="en">

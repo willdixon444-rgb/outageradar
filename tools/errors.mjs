@@ -8,7 +8,7 @@
 // rate = the account's request limits; account = billing/quota, not an outage.
 
 import { SHELL } from "../site/board.js";
-import { SITE_URL, esc, escCode, pageNames, boardStyles, PAGE_STYLES, backupSection } from "./status-pages.mjs";
+import { SITE_URL, OG_IMAGE, esc, escCode, pageNames, boardStyles, PAGE_STYLES, backupSection } from "./status-pages.mjs";
 
 export const LAST_CHECKED = "Nov 10, 2026";
 
@@ -299,7 +299,7 @@ function head({ title, description, url, ld, extraStyles }) {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:url" content="${url}">
-<meta property="og:image" content="${SITE_URL}/og.png">
+<meta property="og:image" content="${OG_IMAGE}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">

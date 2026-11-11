@@ -9,11 +9,16 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { SHELL } from "../site/board.js";
+import { createHash } from "node:crypto";
 import { backupsFor, pythonSnippet, jsSnippet } from "./backups.mjs";
 import { ERRORS, errorsFor, renderErrorPage, renderErrorsHub } from "./errors.mjs";
 import { renderAlertsPage, renderTokenPage } from "./alerts.mjs";
 
 export const SITE_URL = "https://liveoutageradar.com";
+// v1.18.2: the sharing image's address carries a fingerprint of the image, so
+// X, Discord, Slack and Bluesky fetch a new copy whenever it changes.
+export const OG_IMAGE = SITE_URL + "/og.png?v=" +
+  createHash("sha256").update(readFileSync(new URL("../site/og.png", import.meta.url))).digest("hex").slice(0, 8);
 // The day the incident log started (checker v1.6.0 deploy). The page script
 // replaces this with the exact date from the data when it loads.
 export const PAGE_LOG_START = "Nov 8, 2026";
@@ -203,7 +208,7 @@ export function renderServicePage(s, all = SHELL) {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:url" content="${url}">
-<meta property="og:image" content="${SITE_URL}/og.png">
+<meta property="og:image" content="${OG_IMAGE}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
