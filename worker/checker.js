@@ -41,7 +41,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.15.0";
+const VERSION = "1.16.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -1170,6 +1170,18 @@ async function sendAlerts(env, now) {
   }
 }
 
+// v1.16.0: counts for the private dashboard. Never webhooks or ids.
+async function alertCounts(env) {
+  if (!env || !env.DB || !(await alertKeys(env))) return { enabled: false };
+  await ensureSubsSchema(env.DB);
+  const row = await env.DB.prepare(
+    "SELECT (SELECT COUNT(*) FROM alert_subs WHERE confirmed = 1) AS confirmed, " +
+    "(SELECT COUNT(*) FROM alert_subs WHERE confirmed = 0) AS pending, " +
+    "(SELECT COUNT(*) FROM alert_events WHERE done = 0) AS queued",
+  ).first();
+  return { enabled: true, confirmed: Number(row.confirmed) || 0, pending: Number(row.pending) || 0, queued: Number(row.queued) || 0 };
+}
+
 function alertCors(request) {
   const origin = request.headers.get("origin");
   const h = { vary: "Origin", "cache-control": "no-store" };
@@ -1232,8 +1244,9 @@ async function handleAlerts(request, env, action) {
   const existing = await db.prepare("SELECT id, confirmed, confirm_sent_ms FROM alert_subs WHERE hook_hash = ?").bind(hash).first();
   if (existing && (existing.confirmed || now - existing.confirm_sent_ms < CONFIRM_REPEAT_MS)) {
     // Already confirmed, or a confirmation went out in the last 24 hours: update choices, send nothing.
+    // v1.16.0: say which, so the page can explain that no new message was sent.
     await db.prepare("UPDATE alert_subs SET services = ?, minor = ? WHERE id = ?").bind(services, minor, existing.id).run();
-    return out({ ok: true, status: "check_channel" });
+    return out({ ok: true, status: existing.confirmed ? "updated" : "pending" });
   }
   const recent = await db.prepare("SELECT COUNT(*) AS n FROM alert_subs WHERE confirm_sent_ms > ?").bind(now - 60 * MIN).first();
   if (recent && recent.n >= CONFIRM_CAP_PER_HOUR) return out({ error: "busy" }, 429);
@@ -1984,7 +1997,13 @@ async function handleAdminData(request, env, url) {
   const now = Date.now();
   try {
     const results = await queryCounts(env.DB, dayString(now - (rangeDays - 1) * DAY_MS), dayString(now));
-    return adminJson(buildAdminData(results, rangeDays, now), 200);
+    const data = buildAdminData(results, rangeDays, now);
+    try {
+      data.alerts = await alertCounts(env);
+    } catch (err) {
+      data.alerts = { enabled: true, error: "db_error" };
+    }
+    return adminJson(data, 200);
   } catch (err) {
     console.warn("dashboard read failed");
     return adminJson({ error: "db_error" }, 503);
@@ -2122,6 +2141,11 @@ a{color:var(--op)}
   <section class="card">
     <h2>Day by day</h2>
     <div class="scroll"><table><thead><tr><th>Date</th><th>People</th><th>vs day before</th><th>Bots</th><th>Clicks</th></tr></thead><tbody id="days"></tbody></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Outage alerts (Discord and Slack)</h2>
+    <p class="empty" id="alerts"></p>
   </section>
 
   <section class="card">
@@ -2316,6 +2340,10 @@ function adminApp() {
     m.firstChild.style.width = Math.min(100, Math.max(0.5, q.pct)) + "%";
     var pctText = q.pct === 0 && q.writes_today_est > 0 ? "under 0.1%" : q.pct + "%";
     $("quota").textContent = "About " + fmt(q.writes_today_est) + " of " + fmt(q.limit) + " free writes used today (" + pctText + "). Resets at 00:00 UTC. If it runs out, counting pauses until reset; the board keeps working.";
+    var al = data.alerts || { enabled: false };
+    $("alerts").textContent = !al.enabled ? "Alerts are off: the two alert secrets are not set."
+      : al.error ? "Couldn't read the alert counts right now."
+      : fmt(al.confirmed) + " confirmed sign-ups, " + fmt(al.pending) + " waiting for confirmation, " + fmt(al.queued) + " alerts waiting to be sent.";
     $("status").textContent = "Updated " + data.generated_at_utc.slice(11, 16) + " UTC. Refreshes every minute while open.";
     Array.prototype.forEach.call(document.querySelectorAll("[data-days]"), function (b) {
       b.setAttribute("aria-pressed", String(Number(b.getAttribute("data-days")) === data.range_days));

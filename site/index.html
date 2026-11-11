@@ -125,7 +125,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .about p{margin:0 0 .6rem;max-width:72ch}
 .legal{margin-top:1.25rem;font-size:.85rem}
 
-.errlink{display:inline-block;margin-top:.75rem;color:var(--text);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.errlink{display:block;width:fit-content;margin-top:.6rem;color:var(--text);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .errlink:hover{color:var(--op)}
 
 /* v1.15.0: wide screens show the services in two columns of stacked cards;
@@ -190,6 +190,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
       <h1 class="summary" id="summary" aria-live="polite">Checking services&hellip;</h1>
       <p class="lede">Live status of fifteen AI services, from each provider&rsquo;s official status feed plus our own independent check. Updates every few minutes.</p>
       <a class="errlink" href="/errors/">Got an API error like 529 or 429? See what it means &rarr;</a>
+      <a class="errlink" href="/alerts/">Get outage alerts in Discord or Slack &rarr;</a>
     </div>
   </section>
 

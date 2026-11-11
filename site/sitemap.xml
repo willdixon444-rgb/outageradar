@@ -1,21 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://liveoutageradar.com/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/openai/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/claude/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/gemini/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/xai/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/mistral/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/perplexity/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/deepseek/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/cohere/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/groq/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/huggingface/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/together/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/fireworks/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/openrouter/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/github-copilot/</loc><lastmod>2026-11-10</lastmod></url>
-  <url><loc>https://liveoutageradar.com/status/deepinfra/</loc><lastmod>2026-11-10</lastmod></url>
+  <url><loc>https://liveoutageradar.com/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/openai/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/claude/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/gemini/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/xai/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/mistral/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/perplexity/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/deepseek/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/cohere/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/groq/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/huggingface/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/together/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/fireworks/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/openrouter/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/github-copilot/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/status/deepinfra/</loc><lastmod>2026-11-11</lastmod></url>
+  <url><loc>https://liveoutageradar.com/alerts/</loc><lastmod>2026-11-11</lastmod></url>
   <url><loc>https://liveoutageradar.com/errors/</loc><lastmod>2026-11-10</lastmod></url>
   <url><loc>https://liveoutageradar.com/errors/claude-529-overloaded/</loc><lastmod>2026-11-10</lastmod></url>
   <url><loc>https://liveoutageradar.com/errors/claude-429-rate-limit/</loc><lastmod>2026-11-10</lastmod></url>

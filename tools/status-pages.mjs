@@ -237,6 +237,7 @@ ${PAGE_STYLES.trim()}
     <p class="since" id="since">History logged by OutageRadar since ${PAGE_LOG_START}.</p>
     <ul class="history" id="history"><li class="empty">Loading incident history&hellip;</li></ul>
     <noscript><p>The history list needs JavaScript.</p></noscript>
+    <p class="since"><a href="/alerts/?service=${s.id}">Get ${esc(n.short)} outage alerts in Discord or Slack</a>, free.</p>
     <p class="since">Follow ${esc(n.short)} incidents in a feed reader: <a href="https://data.liveoutageradar.com/feed/${s.id}.xml">RSS feed</a>.</p>
     <p class="since">For incidents before that, and for ${OFFICIAL_SOURCE[s.id] ? OFFICIAL_SOURCE[s.id].history : esc(n.full) + "&rsquo;s own explanations, see the <a href=\"" + esc(s.status_page) + "\">official " + esc(n.full) + " status page</a>"}.</p>
   </section>

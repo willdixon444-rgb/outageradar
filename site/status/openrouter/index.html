@@ -124,7 +124,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .about p{margin:0 0 .6rem;max-width:72ch}
 .legal{margin-top:1.25rem;font-size:.85rem}
 
-.errlink{display:inline-block;margin-top:.75rem;color:var(--text);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.errlink{display:block;width:fit-content;margin-top:.6rem;color:var(--text);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 .errlink:hover{color:var(--op)}
 
 /* v1.15.0: wide screens show the services in two columns of stacked cards;
@@ -206,6 +206,7 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
     <p class="since" id="since">History logged by OutageRadar since Nov 8, 2026.</p>
     <ul class="history" id="history"><li class="empty">Loading incident history&hellip;</li></ul>
     <noscript><p>The history list needs JavaScript.</p></noscript>
+    <p class="since"><a href="/alerts/?service=openrouter">Get OpenRouter outage alerts in Discord or Slack</a>, free.</p>
     <p class="since">Follow OpenRouter incidents in a feed reader: <a href="https://data.liveoutageradar.com/feed/openrouter.xml">RSS feed</a>.</p>
     <p class="since">For incidents before that, and for OpenRouter&rsquo;s own explanations, see the <a href="https://status.openrouter.ai">official OpenRouter status page</a>.</p>
   </section>

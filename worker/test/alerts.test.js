@@ -79,9 +79,9 @@ async function claudeRecovers() {
   clk.advance(5); await runOnce(worker, env);
 }
 
-test("this release is v1.15.0", async () => {
+test("this release is v1.16.0", async () => {
   await runOnce(worker, env);
-  assert.ok(env.KV.store.has("samples:v1.15.0"));
+  assert.ok(env.KV.store.has("samples:v1.16.0"));
 });
 
 // ---------- not set up ----------
@@ -191,6 +191,59 @@ test("sign-ups from other websites are refused; ours get CORS headers", async ()
 test("broken or oversized request bodies are refused", async () => {
   assert.equal((await post("subscribe", "{not json")).status, 400);
   assert.equal((await post("subscribe", JSON.stringify({ webhook: D1, services: ["claude"], pad: "x".repeat(5000) }))).status, 413);
+});
+
+// ---------- v1.16.0 (Phase 2): the page can tell a new sign-up from an update ----------
+
+test("a new sign-up, a repeat within 24 hours, and an update to a confirmed one answer differently", async () => {
+  assert.equal((await subscribe(D1, ["claude"])).body.status, "check_channel", "new: message sent");
+  assert.equal((await subscribe(D1, ["claude", "groq"])).body.status, "pending", "not confirmed yet, message already sent");
+  assert.equal(rows()[0].services, ",groq,claude,", "choices still updated (board order)");
+  const token = tokenIn(to(D1)[0].content, "confirm");
+  await post("confirm", { token });
+  const r = await subscribe(D1, ALL_IDS, { minor: true });
+  assert.equal(r.body.status, "updated", "confirmed: choices updated");
+  assert.equal(rows()[0].minor, 1);
+  assert.equal(rows()[0].confirmed, 1, "stays confirmed");
+  assert.equal(to(D1).length, 1, "no new message for either");
+});
+
+test("the honeypot answer still looks like a new sign-up", async () => {
+  assert.equal((await subscribe(D1, ["claude"], { company_name: "bot" })).body.status, "check_channel");
+});
+
+const ADMIN = "test-admin-key-0123456789-abcdefghij";
+async function adminData() {
+  const res = await worker.fetch(new Request("https://data.liveoutageradar.com/admin/data", { headers: { authorization: "Bearer " + ADMIN } }), env, ctx);
+  return { res, text: await res.text() };
+}
+
+test("the private dashboard shows alert counts only, never webhooks", async () => {
+  env.ADMIN_KEY = ADMIN;
+  await subscribeAndConfirm(D1, ["claude"]);
+  await subscribe(D2, ["openai"]);
+  await claudeOutage();
+  const { res, text } = await adminData();
+  assert.equal(res.status, 200);
+  const data = JSON.parse(text);
+  assert.deepEqual(data.alerts, { enabled: true, confirmed: 1, pending: 1, queued: 1 });
+  assert.ok(!text.includes("discord.com") && !text.includes("tok-one_A") && !text.includes("hook_enc"));
+  await sendOnce();
+  assert.equal(JSON.parse((await adminData()).text).alerts.queued, 0);
+});
+
+test("with alerts off, the dashboard says so and still works", async () => {
+  env = makeEnv(memoryKV(), { DB: db, ADMIN_KEY: ADMIN });
+  const { res, text } = await adminData();
+  assert.equal(res.status, 200);
+  assert.deepEqual(JSON.parse(text).alerts, { enabled: false });
+});
+
+test("the dashboard page has an alerts card", async () => {
+  const res = await worker.fetch(new Request("https://data.liveoutageradar.com/admin"), env, ctx);
+  const html = await res.text();
+  assert.match(html, /<h2>Outage alerts \(Discord and Slack\)<\/h2>/);
+  assert.match(html, /id="alerts"/);
 });
 
 test("the same webhook gets at most one confirmation message per 24 hours", async () => {

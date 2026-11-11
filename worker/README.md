@@ -18,6 +18,23 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Alerts Phase 2: public (v1.16.0, Nov 11, 2026)
+
+- Pilot passed on the live system (Nov 10-11): sign-up, confirm, a real
+  Together AI major-outage start and recovered alert (10 min, once each),
+  unsubscribe by button.
+- Sign-up answers `status`: `check_channel` (new, message sent), `pending`
+  (not confirmed; a message went out in the last 24 h; choices updated) or
+  `updated` (confirmed; choices updated). The honeypot answer stays
+  `check_channel`.
+- `/admin/data` adds `alerts`: `{enabled, confirmed, pending, queued}` (counts
+  only), shown in a dashboard card. `{enabled: false}` when the secrets are
+  missing.
+- Site v1.18.0: the sign-up page is public (canonical, sitemap, llms.txt),
+  linked from the homepage and every history page (`/alerts/?service=<id>`
+  pre-ticks that service), with Select all and a screenshot warning. Confirm
+  and unsubscribe pages stay noindex.
+
 ## Self-serve Discord/Slack alerts, Phase 1 pilot (v1.15.0, Nov 10, 2026)
 
 - Off unless both secrets exist: `ALERTS_ENC_KEY` (base64 of 32 random bytes,
