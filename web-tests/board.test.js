@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 // Display-logic tests for the board. Nothing here ships to the site.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -410,6 +412,20 @@ test("the homepage has a link-preview card for social sites", () => {
   assert.equal(png.subarray(1, 4).toString(), "PNG");
   assert.equal(png.readUInt32BE(16), 1200);
   assert.equal(png.readUInt32BE(20), 630);
+});
+
+// v1.18.1: the sharing image is generated from the board's own service list,
+// so its count can't go stale again (it said "ten" after we reached 15).
+test("the sharing image is up to date with the service list", () => {
+  const run = (arg) => spawnSync("python3", [fileURLToPath(new URL("../tools/og_image.py", import.meta.url)), arg], { encoding: "utf8" });
+  const count = run("--count");
+  assert.equal(count.status, 0, count.stderr);
+  assert.equal(Number(count.stdout.trim()), SHELL.length, "the image counts the same services as the board");
+  const verify = run("--verify");
+  assert.equal(verify.status, 0, "site/og.png is out of date: run python3 tools/og_image.py\n" + verify.stdout + verify.stderr);
+  const alt = PAGE.match(/<meta property="og:image:alt" content="([^"]+)">/)[1];
+  assert.match(alt, new RegExp("\\b" + SHELL.length + " AI services\\b"));
+  assert.doesNotMatch(alt, /\bten\b/i);
 });
 
 test("the old preview address forwards to the homepage and is not indexed", () => {
