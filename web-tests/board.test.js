@@ -504,6 +504,45 @@ function pngSize(name) {
   assert.equal(b.subarray(1, 4).toString("latin1"), "PNG", name + " is a PNG");
   return [b.readUInt32BE(16), b.readUInt32BE(20)];
 }
+// v1.18.4: the badge other sites embed lives at one permanent address,
+// https://liveoutageradar.com/badge.png, made by tools/badge_image.py. It names
+// no service count (the old one said "10 AI APIs" after we reached 15), so it
+// can't go stale on other people's sites when we add services.
+const BRAND = (f) => readFileSync(new URL("../brand/" + f, import.meta.url));
+const COUNTED = /\b\d+\s+(?:more\b|AI\b)|\bten\b/i;
+test("the hosted badge is at site/badge.png, 736x144, same file as the brand master", () => {
+  const png = readFileSync(new URL("../site/badge.png", import.meta.url));
+  assert.equal(png.subarray(1, 4).toString("latin1"), "PNG");
+  assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [736, 144]);
+  assert.ok(png.equals(BRAND("outageradar-badge@2x.png")), "site/badge.png must equal brand/outageradar-badge@2x.png");
+  const small = BRAND("outageradar-badge.png");
+  assert.deepEqual([small.readUInt32BE(16), small.readUInt32BE(20)], [368, 72]);
+});
+test("the badge images match their generator (python3 tools/badge_image.py)", () => {
+  const r = spawnSync("python3", [fileURLToPath(new URL("../tools/badge_image.py", import.meta.url)), "--verify"], { encoding: "utf8" });
+  assert.equal(r.status, 0, "badge out of date: run python3 tools/badge_image.py\n" + r.stdout + r.stderr);
+});
+test("the badge names no service count, in the SVG master and the README code", () => {
+  const svg = BRAND("outageradar-badge.svg").toString("utf8");
+  assert.match(svg, /Know when to switch: live status of AI APIs/);
+  for (const m of svg.matchAll(/(?:<title>|aria-label=")([^<"]+)/g)) assert.match(m[1], /live status of AI APIs/i, m[1]);
+  assert.doesNotMatch(svg, COUNTED);
+  const readme = BRAND("README.md").toString("utf8");
+  assert.doesNotMatch(readme, COUNTED);
+});
+test("the README's paste-ready badge loads from our permanent address", () => {
+  const readme = BRAND("README.md").toString("utf8");
+  assert.match(readme, /<img src="https:\/\/liveoutageradar\.com\/badge\.png" width="368" height="72"/);
+  assert.match(readme, /<a href="https:\/\/liveoutageradar\.com\/\?utm_source=SITENAME" target="_blank" rel="noopener">/);
+  assert.doesNotMatch(readme, /src="\/images\//);
+});
+test("the badge is an image file, not a page: it stays out of the sitemap", () => {
+  assert.doesNotMatch(SITE("sitemap.xml"), /badge/);
+});
+test("partner box links never break across lines", () => {
+  assert.match(PAGE, /\.partner \.more a\{white-space:nowrap\}/);
+});
+
 test("brand has the social header (1500x500) and avatar (400x400)", () => {
   assert.deepEqual(pngSize("outageradar-x-header.png"), [1500, 500]);
   assert.deepEqual(pngSize("outageradar-x-profile.png"), [400, 400]);

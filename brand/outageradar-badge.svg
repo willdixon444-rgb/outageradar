@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="368" height="72" viewBox="0 0 368 72" role="img" aria-label="OutageRadar: live outage radar for 10 AI APIs">
-  <title>OutageRadar: live outage radar for 10 AI APIs</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="368" height="72" viewBox="0 0 368 72" role="img" aria-label="OutageRadar: know when to switch. Live status of AI APIs">
+  <title>OutageRadar: know when to switch. Live status of AI APIs</title>
   <defs>
     <linearGradient id="sw" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#4be08a" stop-opacity="0"/>
@@ -20,6 +20,6 @@
     <circle cx="-8" cy="13" r="2.6" fill="#ffb547"/>
     <circle r="2" fill="#4be08a"/>
   </g>
-  <text x="74" y="32" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="20" font-weight="700" fill="#e8fff1">Outage<tspan fill="#4be08a">Radar</tspan></text>
-  <text x="74" y="52" font-family="system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="12.5" fill="#9cc9ad">Know when to switch: live status of 10 AI APIs</text>
+  <text x="74" y="32" font-family="Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="20" font-weight="700" fill="#e8fff1">Outage<tspan fill="#4be08a">Radar</tspan></text>
+  <text x="74" y="52" font-family="Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif" font-size="12.5" fill="#9cc9ad">Know when to switch: live status of AI APIs</text>
 </svg>
