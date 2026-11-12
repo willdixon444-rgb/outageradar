@@ -34,7 +34,8 @@ bluesky-social/atproto) and docs.bsky.app (rate limits, bot guidance).
   self-label to the profile (keeps every other field; `swapRecord`), then posts.
 - Runs from the every-minute cron at most every 5 minutes, and only when the
   alert sender sent 30 or fewer messages that minute. Hard cap 12 outside
-  requests a run. Discord gets one digest message a run.
+  requests a run. Discord gets one digest message a run, without link
+  preview cards (v1.17.1, Discord flag 4).
 - Login: once, saved encrypted in D1 (`social_state`), refreshed on
   ExpiredToken; at most one login per run; 30-minute wait after a failed login
   (Bluesky allows 30 logins per 5 minutes, 300 per day).

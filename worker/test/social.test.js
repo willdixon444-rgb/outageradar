@@ -159,9 +159,9 @@ async function claudeRecovers() {
 
 // ---------- version and switches ----------
 
-test("this release is v1.17.0", async () => {
+test("this release is v1.17.1", async () => {
   await board();
-  assert.ok(env.KV.store.has("samples:v1.17.0"));
+  assert.ok(env.KV.store.has("samples:v1.17.1"));
 });
 
 test("off by default: without BSKY_MODE nothing touches Bluesky or the social tables", async () => {
@@ -483,6 +483,7 @@ test("Discord gets one digest message per run, quoting people's words safely", a
   const msgs = net.discord.filter((d) => d.url === HEALTH_HOOK && /BLUESKY/.test(d.body.content));
   assert.equal(msgs.length, 1);
   assert.deepEqual(msgs[0].body.allowed_mentions, { parse: [] }, "no pings, even if someone writes @everyone");
+  assert.equal(msgs[0].body.flags, 4, "v1.17.1: no link preview cards (Discord SUPPRESS_EMBEDS)");
   assert.ok(msgs[0].body.content.length <= 2000);
 });
 
@@ -579,4 +580,11 @@ test("records about people's posts are deleted after 8 days, even with Bluesky s
   await board();
   assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM social_seen").get().n, 0);
   assert.equal(db.raw.prepare("SELECT COUNT(*) AS n FROM social_log").get().n, 0);
+});
+
+test("other health and outage messages keep their link previews (only the digest turns them off)", async () => {
+  await claudeOutage();
+  const outage = net.discord.filter((d) => d.url !== HEALTH_HOOK || !/BLUESKY/.test(d.body.content));
+  assert.ok(outage.length > 0);
+  for (const d of outage) assert.equal(d.body.flags, undefined);
 });

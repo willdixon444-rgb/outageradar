@@ -44,7 +44,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.17.0";
+const VERSION = "1.17.1";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -665,14 +665,17 @@ const EMOJI = {
   bell: "\u{1F514}",
 };
 
-async function postDiscord(webhook, content) {
+async function postDiscord(webhook, content, flags) {
   // Returns true only if Discord accepted it. Never throws, never logs the URL.
+  // flags: optional Discord message flags (v1.17.1: 4 = no link preview cards).
   if (!webhook) return false;
+  const message = { username: "OutageRadar", content, allowed_mentions: { parse: [] } };
+  if (flags) message.flags = flags;
   try {
     const res = await fetchWithTimeout(webhook, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username: "OutageRadar", content, allowed_mentions: { parse: [] } }),
+      body: JSON.stringify(message),
     }, DISCORD_TIMEOUT_MS);
     discardBody(res);
     if (!res.ok) console.warn("discord post rejected, HTTP " + res.status);
@@ -2549,7 +2552,8 @@ async function handleFetch(request, env) {
 // reply only to people who tagged the account, log in once and refresh the
 // session (logins: 30 per 5 minutes, 300 per day), self-label bots "bot".
 // Runs from the every-minute cron, at most every 5 minutes, and only when the
-// alert sender left room in the request budget. Discord gets one digest a run.
+// alert sender left room in the request budget. Discord gets one digest a run,
+// without link preview cards (v1.17.1).
 const BSKY_XRPC = "https://bsky.social/xrpc/";
 const SOCIAL_EVERY_MS = 5 * MIN;
 const SOCIAL_SLACK_MS = 20 * 1000;       // a cron tick can fire a little early
@@ -3004,7 +3008,7 @@ async function sendSocialDigest(run) {
     n += 1;
   }
   if (n < run.lines.length) body += "\n...and " + (run.lines.length - n) + " more (see the Bluesky notifications)";
-  await postDiscord(hook, body);
+  await postDiscord(hook, body, 4); // v1.17.1: no preview cards for the post links
 }
 
 // The every-minute cron calls this after sending alerts.
