@@ -120,6 +120,8 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
 .partner p{margin:0;max-width:72ch;color:var(--muted)}
 .partner strong{color:var(--text)}
 .partner a{color:var(--op);font-weight:650}
+.partner .plabel{margin:0 0 .4rem;font-size:.75rem;letter-spacing:.02em;color:var(--muted)}
+.partner .more{margin-top:.55rem;font-size:.88rem}
 .about{margin-top:2rem;padding-top:1.25rem;border-top:1px solid var(--line);color:var(--muted);font-size:.92rem}
 .about h2{margin:0 0 .5rem;font-size:1rem;color:var(--text)}
 .about p{margin:0 0 .6rem;max-width:72ch}
@@ -247,7 +249,13 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--chk);outline-offset
   </ul>
 
   <aside class="partner" aria-label="Related tool">
-    <p><strong>Building on these APIs?</strong> <a href="https://tokenmargin.dev" target="_blank" rel="noopener">TokenMargin</a> compares API costs across providers and generates fallback router configs, so one provider&rsquo;s outage doesn&rsquo;t take your app down.</p>
+    <p class="plabel">Partner &middot; description provided by TokenMargin</p>
+    <p><strong>Protect your AI SaaS margins &amp; uptime:</strong> <a href="https://tokenmargin.dev/?ref=liveoutageradar" target="_blank" rel="noopener">TokenMargin.dev</a> is a real-time AI FinOps &amp; SaaS Gross Margin Stress-Tester tracking 460+ models across 235+ providers. Model how P95 power users and multi-turn agent loops impact your gross margin, calculate 75%&ndash;90% prompt-caching savings, audit usage CSV bills client-side, and generate zero-dependency failover routers.</p>
+    <p class="more">
+      <a href="https://tokenmargin.dev/?ref=liveoutageradar" target="_blank" rel="noopener">SaaS Margin Simulator &rarr;</a> &nbsp;&middot;&nbsp;
+      <a href="https://tokenmargin.dev/guides/openrouter-openai-anthropic-csv-bill-analyzer.html?ref=liveoutageradar" target="_blank" rel="noopener">Client-Side CSV Bill Auditor &rarr;</a> &nbsp;&middot;&nbsp;
+      <a href="https://tokenmargin.dev/guides/zero-dependency-llm-router-vs-litellm-openrouter-fallback.html?ref=liveoutageradar" target="_blank" rel="noopener">Failover Router Configs &rarr;</a>
+    </p>
   </aside>
 
   <footer class="about">

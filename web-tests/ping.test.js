@@ -48,6 +48,9 @@ test("a view ping carries only page, referrer domain, tag and the automation fla
 test("outbound links are named by their site; our own links are not counted", () => {
   const own = "liveoutageradar.com";
   assert.equal(linkFor("https://tokenmargin.dev/", own), "tokenmargin.dev");
+  // v1.18.3: the partner box's ?ref= tag and guide paths still count as tokenmargin.dev.
+  assert.equal(linkFor("https://tokenmargin.dev/?ref=liveoutageradar", own), "tokenmargin.dev");
+  assert.equal(linkFor("https://tokenmargin.dev/guides/a.html?ref=liveoutageradar", own), "tokenmargin.dev");
   assert.equal(linkFor("https://www.example.com/x?y=1", own), "example.com");
   assert.equal(linkFor("mailto:contact@liveoutageradar.com", own), "email");
   assert.equal(linkFor("https://liveoutageradar.com/privacy.html", own), null);

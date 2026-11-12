@@ -7,6 +7,8 @@ Files:
 - `outageradar-badge@2x.png`: use this one (736 x 144, shown at 368 x 72, sharp on phones)
 - `outageradar-badge.png`: normal size (368 x 72)
 - `outageradar-badge.svg`: original, any size
+- `outageradar-x-header.png`: X/Bluesky banner (1500 x 500), as uploaded Nov 11, 2026
+- `outageradar-x-profile.png`: X/Bluesky avatar (400 x 400), as uploaded Nov 11, 2026
 
 ## How to give it to another site
 
@@ -34,6 +36,8 @@ Files:
 ## Tags in use
 - tokenmargin: TokenMargin (Charlie), Nov 2026
 - boss: Will's own visits (bookmark), so they can be told apart
+- x: the pinned intro post on X (@OutageRadarX)
+- bluesky: the pinned intro post on Bluesky (@liveoutageradar.com)
 
 ## Rules
 - Keep it one natural link per site (Google warns against link swaps at scale).

@@ -279,8 +279,41 @@ test("GitHub Copilot's HTTP 400 reads as needs a key, only when it counted as an
 import { readFileSync } from "node:fs";
 const PAGE = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
 
-test("the TokenMargin partner link is on the page", () => {
-  assert.match(PAGE, /href="https:\/\/tokenmargin\.dev\/?"/);
+// v1.18.3: Charlie's own partner text. It is unpaid, so rel is exactly
+// "noopener" (never "sponsored"), and it is labelled so readers know the
+// description (and its numbers) is TokenMargin's, not OutageRadar's data.
+const PARTNER = (PAGE.match(/<aside class="partner"[\s\S]*?<\/aside>/) || [""])[0];
+const PARTNER_LINKS = [
+  "https://tokenmargin.dev/?ref=liveoutageradar",
+  "https://tokenmargin.dev/?ref=liveoutageradar",
+  "https://tokenmargin.dev/guides/openrouter-openai-anthropic-csv-bill-analyzer.html?ref=liveoutageradar",
+  "https://tokenmargin.dev/guides/zero-dependency-llm-router-vs-litellm-openrouter-fallback.html?ref=liveoutageradar",
+];
+
+test("the TokenMargin partner box carries its four tagged links, in order", () => {
+  assert.ok(PARTNER, "partner box present");
+  const hrefs = [...PARTNER.matchAll(/<a\b[^>]*href="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(hrefs, PARTNER_LINKS);
+});
+
+test("partner links are unpaid: new tab, rel exactly noopener, never sponsored", () => {
+  const tags = PARTNER.match(/<a\b[^>]*>/g) || [];
+  assert.equal(tags.length, PARTNER_LINKS.length);
+  for (const t of tags) {
+    assert.match(t, /target="_blank"/, t);
+    assert.match(t, /rel="noopener"/, t);
+    assert.doesNotMatch(t, /sponsored|nofollow/, t);
+  }
+});
+
+test("the partner box says the description is TokenMargin's, not ours", () => {
+  assert.match(PARTNER, /<p class="plabel">Partner &middot; description provided by TokenMargin<\/p>/);
+});
+
+test("the partner box has no inline styles (they live in the stylesheet)", () => {
+  assert.doesNotMatch(PARTNER, /style=/);
+  assert.match(PAGE, /\.partner \.plabel\{/);
+  assert.match(PAGE, /\.partner \.more\{/);
 });
 
 test("every link that opens a new tab is protected with rel=noopener", () => {
@@ -459,6 +492,21 @@ test("the old preview address forwards to the homepage and is not indexed", () =
   const p = SITE("preview/index.html");
   assert.match(p, /http-equiv="refresh" content="0; url=\/"/);
   assert.match(p, /noindex/);
+});
+
+test("the preview folder holds only that forwarder (old board copy removed)", () => {
+  assert.deepEqual(readdirSync(new URL("../site/preview/", import.meta.url)), ["index.html"]);
+});
+
+// v1.18.3: the X/Bluesky banner and avatar live in /brand at their upload sizes.
+function pngSize(name) {
+  const b = readFileSync(new URL("../brand/" + name, import.meta.url));
+  assert.equal(b.subarray(1, 4).toString("latin1"), "PNG", name + " is a PNG");
+  return [b.readUInt32BE(16), b.readUInt32BE(20)];
+}
+test("brand has the social header (1500x500) and avatar (400x400)", () => {
+  assert.deepEqual(pngSize("outageradar-x-header.png"), [1500, 500]);
+  assert.deepEqual(pngSize("outageradar-x-profile.png"), [400, 400]);
 });
 
 test("the homepage loads the board script from the site root", () => {
