@@ -18,6 +18,42 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Bluesky: incident posts and reply assist (v1.17.0, Nov 12, 2026)
+
+Off unless every setting below is present. Facts verified Nov 12, 2026 from
+Bluesky's official lexicons (github.com/bluesky-social/bsky and
+bluesky-social/atproto) and docs.bsky.app (rate limits, bot guidance).
+
+- Settings: `BSKY_MODE` (plain text: `pilot` or `live`; anything else = off),
+  `BSKY_HANDLE` (plain text, `liveoutageradar.com`), `BSKY_APP_PASSWORD`
+  (secret: an app password, never the main password), optional
+  `DISCORD_SOCIAL_WEBHOOK` (secret; default is the health channel). Also needs
+  `DB` and both alert keys (the saved login is encrypted with `ALERTS_ENC_KEY`).
+- `pilot`: reads mentions and incidents, writes nothing to Bluesky; Discord
+  shows "PILOT would reply / would post". `live`: first adds the "bot"
+  self-label to the profile (keeps every other field; `swapRecord`), then posts.
+- Runs from the every-minute cron at most every 5 minutes, and only when the
+  alert sender sent 30 or fewer messages that minute. Hard cap 12 outside
+  requests a run. Discord gets one digest message a run.
+- Login: once, saved encrypted in D1 (`social_state`), refreshed on
+  ExpiredToken; at most one login per run; 30-minute wait after a failed login
+  (Bluesky allows 30 logins per 5 minutes, 300 per day).
+- Lane A (automatic reply): only mentions/replies to us that name a listed
+  service and a status word; built only from board data no older than 15
+  minutes; ASCII, at most 300 characters, ends "(automated)", link tagged
+  `utm_source=bsky_reply`. Limits: 3 a run, 20 an hour, 3 per person a day.
+  Never answers itself or accounts labeled "bot". Each post answered once.
+- Lane B (common questions: alerts, free, add a service, how it works) and
+  Lane C (everything else) go to Discord with the post link. Quotes are never
+  auto-answered.
+- Incident posts: confirmed major starts (not signals-disagree) and their
+  ends; not posted if the service is already healthy at posting time or the
+  event is over 30 minutes old; a recovery only if its start was posted.
+  At most 2 a run, 6 an hour. Links tagged `utm_source=bsky_post`.
+- Kept: post addresses and author account IDs, 8 days (`social_seen`,
+  `social_log`), deleted hourly by the 5-minute run even when Bluesky is off.
+  The privacy page says so.
+
 ## Alerts Phase 2: public (v1.16.0, Nov 11, 2026)
 
 - Pilot passed on the live system (Nov 10-11): sign-up, confirm, a real

@@ -154,7 +154,7 @@ test("Select all ticks or clears every service and shows a mixed state", () => {
 
 test("the privacy page explains alerts before they go public", () => {
   const p = SITE("privacy.html");
-  assert.match(p, /Last updated: November 10, 2026/);
+  assert.match(p, /Last updated: [A-Z][a-z]+ \d{1,2}, 20\d\d/);
   assert.match(p, /<h2>Outage alerts \(Discord and Slack\)<\/h2>/);
   for (const promise of [/encrypted/, /unsubscribe link in every alert/i, /24 hours/, /no email address/i, /not your IP address/i, /link previews/i]) {
     assert.match(p, promise, String(promise));

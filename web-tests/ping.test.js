@@ -78,5 +78,5 @@ test("the privacy page describes the counts before they ship", () => {
   assert.match(p, /link clicks/i);
   assert.match(p, /no cookies/i);
   assert.match(p, /do not store (your )?IP address/i);
-  assert.match(p, /November 10, 2026/); // v1.17.0: alerts section added
+  assert.match(p, /Last updated: [A-Z][a-z]+ \d{1,2}, 20\d\d/); // the newest date is pinned by the Bluesky privacy test
 });

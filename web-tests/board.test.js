@@ -405,6 +405,18 @@ test("the privacy page exists, is indexable, and names the contact address", () 
   assert.match(p, /IP address/);
 });
 
+// v1.19.0 (checker v1.17.0): Bluesky reply assist stores post addresses and
+// account IDs for up to 8 days; the privacy page must say so.
+test("the privacy page explains what the Bluesky account keeps, and for how long", () => {
+  const p = readFileSync(PRIVACY_PATH, "utf8");
+  assert.match(p, /<h2>Bluesky[^<]*<\/h2>/);
+  assert.match(p, /account ID/);
+  assert.match(p, /up to 8 days/);
+  assert.match(p, /\(automated\)/);
+  assert.match(p, /private Discord channel/);
+  assert.match(p, /Last updated: November 12, 2026/);
+});
+
 test("the board links to the privacy page", () => {
   assert.match(PAGE, /href="\/privacy\.html"/);
 });

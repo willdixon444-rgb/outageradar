@@ -37,11 +37,14 @@
 //   SEND_TEST_ALERT         plain text variable, optional. Any value sends one
 //                           TEST message to the alerts channel; change the
 //                           value to send another. Remove it when done.
+//   BSKY_MODE, BSKY_HANDLE, BSKY_APP_PASSWORD, DISCORD_SOCIAL_WEBHOOK
+//                           v1.17.0 Bluesky posts and reply assist; off unless
+//                           all are set (see the Bluesky section below).
 //
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.16.0";
+const VERSION = "1.17.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -736,7 +739,7 @@ function isTopOfHour(ms) {
 // fetch extra sample URLs into the room left after everything else.
 const SUBREQUEST_LIMIT = 50;
 const KV_RESERVE = 4;        // read state, read samples key, write samples, write state
-const D1_RESERVE = 2;        // daily count cleanup (one batch), with margin
+const D1_RESERVE = 3;        // count cleanup, alert/social events (v1.17.0), margin
 const DISCORD_RESERVE = 6;   // alerts + health messages in one run
 const REDIRECT_RESERVE = 4;  // redirects count as extra subrequests
 const FIXED_RESERVE = KV_RESERVE + D1_RESERVE + DISCORD_RESERVE + REDIRECT_RESERVE;
@@ -1123,18 +1126,28 @@ async function recordAlertEvents(env, events, now) {
   try {
     if (!(await alertKeys(env))) return;
     await ensureSubsSchema(env.DB);
-    await env.DB.batch(events.map((e) => env.DB.prepare(
+    const writes = events.map((e) => env.DB.prepare(
       "INSERT INTO alert_events (service, kind, severity, state, created_ms) VALUES (?, ?, ?, ?, ?)",
-    ).bind(e.service, e.kind, e.severity, e.state, now)));
+    ).bind(e.service, e.kind, e.severity, e.state, now));
+    // v1.17.0: confirmed major incidents also queue for Bluesky, same batch.
+    const social = socialMode(env) ? events.filter(isSocialEvent) : [];
+    if (social.length) {
+      await ensureSocialSchema(env.DB);
+      for (const e of social) writes.push(env.DB.prepare(
+        "INSERT INTO social_events (service, kind, state, created_ms) VALUES (?, ?, ?, ?)",
+      ).bind(e.service, e.kind, e.state, now));
+    }
+    await env.DB.batch(writes);
   } catch (err) {
     console.warn("alert events not recorded");
   }
 }
 
 // The every-minute run: housekeeping, then send in batches.
+// Returns how many messages it sent (v1.17.0: the social run needs the room).
 async function sendAlerts(env, now) {
   const keys = await alertKeys(env);
-  if (!keys || !env.DB) return;
+  if (!keys || !env.DB) return 0;
   const db = env.DB;
   await ensureSubsSchema(db);
   await db.batch([
@@ -1144,7 +1157,7 @@ async function sendAlerts(env, now) {
   let sent = 0;
   while (sent < SUB_BATCH) {
     const ev = await db.prepare("SELECT id, service, kind, severity, state, cursor FROM alert_events WHERE done = 0 ORDER BY id LIMIT 1").first();
-    if (!ev) return;
+    if (!ev) return sent;
     const want = SUB_BATCH - sent;
     const minorOnly = ev.severity === "minor" ? " AND minor = 1" : "";
     const { results } = await db.prepare(
@@ -1159,15 +1172,16 @@ async function sendAlerts(env, now) {
       if (r.later) {
         // Rate limited or their server is down: stop here, retry this one next minute.
         await db.prepare("UPDATE alert_events SET cursor = ? WHERE id = ?").bind(cursor, ev.id).run();
-        return;
+        return sent;
       }
       if (r.gone) await db.prepare("DELETE FROM alert_subs WHERE id = ?").bind(sub.id).run();
       cursor = sub.id;
     }
     const finished = results.length < want;
     await db.prepare("UPDATE alert_events SET cursor = ?, done = ? WHERE id = ?").bind(cursor, finished ? 1 : 0, ev.id).run();
-    if (!finished) return; // batch full; continue next minute
+    if (!finished) return sent; // batch full; continue next minute
   }
+  return sent;
 }
 
 // v1.16.0: counts for the private dashboard. Never webhooks or ids.
@@ -1816,6 +1830,23 @@ async function handlePing(request, env, kind) {
     }
   }
   return new Response(null, { status: 204, headers });
+}
+
+// v1.17.0: the privacy page promises Bluesky post addresses and account IDs
+// are kept at most 8 days. Hourly, from the 5-minute run, so the promise holds
+// even when Bluesky is switched off (the social run then never happens).
+async function pruneSocial(env, now) {
+  if (!env || !env.DB || new Date(now).getUTCMinutes() >= 5) return;
+  const cutoff = now - SOCIAL_KEEP_MS;
+  try {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM social_seen WHERE created_ms < ?").bind(cutoff),
+      env.DB.prepare("DELETE FROM social_log WHERE created_ms < ?").bind(cutoff),
+      env.DB.prepare("DELETE FROM social_events WHERE created_ms < ?").bind(cutoff),
+    ]);
+  } catch (err) {
+    if (!isMissingTable(err)) console.warn("social cleanup failed");
+  }
 }
 
 async function pruneCounts(env, now) {
@@ -2505,14 +2536,526 @@ async function handleFetch(request, env) {
   return respond(JSON.stringify({ error: "not found" }), 404, cors);
 }
 
+// ---------- v1.17.0: Bluesky (incident posts and reply assist) ----------
+// Settings (Cloudflare dashboard):
+//   BSKY_MODE           plain text: "pilot" (Discord only) or "live". Anything
+//                       else, or unset, is off.
+//   BSKY_HANDLE         plain text, e.g. liveoutageradar.com
+//   BSKY_APP_PASSWORD   secret: a Bluesky APP password (made in Bluesky's
+//                       settings under App passwords), never the main password
+//   DISCORD_SOCIAL_WEBHOOK  optional secret; defaults to the health channel
+// Also needs DB and the two alert keys: the saved login is encrypted with
+// ALERTS_ENC_KEY. Bluesky's guidance (docs.bsky.app, atproto.com, Nov 2026):
+// reply only to people who tagged the account, log in once and refresh the
+// session (logins: 30 per 5 minutes, 300 per day), self-label bots "bot".
+// Runs from the every-minute cron, at most every 5 minutes, and only when the
+// alert sender left room in the request budget. Discord gets one digest a run.
+const BSKY_XRPC = "https://bsky.social/xrpc/";
+const SOCIAL_EVERY_MS = 5 * MIN;
+const SOCIAL_SLACK_MS = 20 * 1000;       // a cron tick can fire a little early
+const SOCIAL_MAX_REQUESTS = 12;          // outside requests per run, hard cap
+const SOCIAL_ALERT_ROOM = 30;            // alerts sent this minute; more = wait
+const SOCIAL_REPLIES_PER_RUN = 3;
+const SOCIAL_REPLIES_PER_HOUR = 20;
+const SOCIAL_REPLIES_PER_PERSON_DAY = 3;
+const SOCIAL_POSTS_PER_RUN = 2;
+const SOCIAL_POSTS_PER_HOUR = 6;
+const SOCIAL_EVENT_MAX_AGE_MS = 30 * MIN; // older news is dropped, not posted late
+const SOCIAL_BOARD_MAX_AGE_MS = 15 * MIN; // never answer from older board data
+const SOCIAL_LOGIN_WAIT_MS = 30 * MIN;
+const SOCIAL_KEEP_MS = 8 * 24 * 60 * MIN;
+const BSKY_TIMEOUT_MS = 8000;
+const POST_MAX = 300;                    // app.bsky.feed.post text maxGraphemes
+const DIGEST_MAX = 1900;                 // Discord allows 2000 characters
+const SITE_HOST = "liveoutageradar.com";
+
+const SOCIAL_SCHEMA = [
+  "CREATE TABLE IF NOT EXISTS social_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS social_seen (uri TEXT PRIMARY KEY, created_ms INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS social_log (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, author TEXT NOT NULL DEFAULT '', created_ms INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS social_log_time ON social_log (kind, created_ms)",
+  "CREATE TABLE IF NOT EXISTS social_events (id INTEGER PRIMARY KEY AUTOINCREMENT, service TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL, created_ms INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0)",
+];
+let socialSchemaFor = null;
+async function ensureSocialSchema(db) {
+  if (socialSchemaFor === db) return;
+  await db.batch(SOCIAL_SCHEMA.map((sql) => db.prepare(sql)));
+  socialSchemaFor = db;
+}
+
+// "pilot", "live" or null (off). Needs every setting; never guesses.
+function socialMode(env) {
+  if (!env || !env.DB) return null;
+  const mode = typeof env.BSKY_MODE === "string" ? env.BSKY_MODE.trim().toLowerCase() : "";
+  if (mode !== "pilot" && mode !== "live") return null;
+  const filled = (v) => typeof v === "string" && v.trim() !== "";
+  if (!filled(env.BSKY_HANDLE) || !filled(env.BSKY_APP_PASSWORD)) return null;
+  if (!filled(env.ALERTS_ENC_KEY) || !filled(env.ALERTS_SIGN_KEY)) return null;
+  return mode;
+}
+
+// Only confirmed major incidents: the start (not "signals disagree") and the end.
+function isSocialEvent(e) {
+  if (e.severity !== "major") return false;
+  if (e.kind === "start") return e.state !== "signals_disagree";
+  return e.kind === "end";
+}
+
+function hhmm(ms) {
+  return iso(ms).slice(11, 16);
+}
+
+// Builds post text plus link facets. Facet offsets count UTF-8 bytes, as the
+// lexicon requires (JavaScript string indexes are UTF-16, so never use them).
+function buildPost(parts) {
+  let text = "";
+  const facets = [];
+  for (const part of parts) {
+    if (typeof part === "string") { text += part; continue; }
+    const byteStart = UTF8.encode(text).length;
+    text += part.show;
+    facets.push({
+      index: { byteStart, byteEnd: byteStart + UTF8.encode(part.show).length },
+      features: [{ $type: "app.bsky.richtext.facet#link", uri: part.uri }],
+    });
+  }
+  return { text, facets };
+}
+function statusLink(id, tag) {
+  return { show: SITE_HOST + "/status/" + id + "/", uri: SITE_ORIGIN + "/status/" + id + "/?utm_source=" + tag };
+}
+const PROBE_WORDS = { reachable: "answering", unreachable: "not answering" };
+function serviceFacts(svc) {
+  const def = SERVICES.find((s) => s.id === svc.id);
+  const official = def && !def.feed ? "no official feed"
+    : (svc.official && Object.prototype.hasOwnProperty.call(LABELS, svc.official.status) ? LABELS[svc.official.status] : "Unknown");
+  const probe = svc.probe && Object.prototype.hasOwnProperty.call(PROBE_WORDS, svc.probe.status) ? PROBE_WORDS[svc.probe.status] : "unknown";
+  return "Official status: " + official + "; our API check: " + probe + ".";
+}
+function overallLabel(state) {
+  return Object.prototype.hasOwnProperty.call(LABELS, state) ? LABELS[state] : "Unknown";
+}
+function replyPost(list, boardAt) {
+  for (let n = Math.min(list.length, 2); n >= 1; n--) {
+    const parts = [];
+    list.slice(0, n).forEach((svc, i) => parts.push((i ? " " : "") + svc.name + ": " + overallLabel(svc.overall) + ". " + serviceFacts(svc)));
+    parts.push(" As of " + hhmm(boardAt) + " UTC. Live: ");
+    list.slice(0, n).forEach((svc, i) => { if (i) parts.push(" "); parts.push(statusLink(svc.id, "bsky_reply")); });
+    parts.push(" (automated)");
+    const post = buildPost(parts);
+    if (post.text.length <= POST_MAX) return post;
+  }
+  return null;
+}
+function startPost(svc, ev) {
+  return buildPost([svc.name + ": " + overallLabel(ev.state) + " since " + hhmm(ev.created_ms) + " UTC. " + serviceFacts(svc) + " Live: ",
+    statusLink(svc.id, "bsky_post"), " (automated)"]);
+}
+function endPost(svc, ev, startMs) {
+  return buildPost([svc.name + ": back to normal at " + hhmm(ev.created_ms) + " UTC (problem started " + hhmm(startMs) + " UTC). Live: ",
+    statusLink(svc.id, "bsky_post"), " (automated)"]);
+}
+
+// Words people use for each service. Matched as whole words, lowercase.
+const SOCIAL_ALIASES = {
+  openai: ["openai", "open ai", "chatgpt", "gpt"],
+  claude: ["claude", "anthropic"],
+  gemini: ["gemini"],
+  xai: ["grok", "xai", "x.ai"],
+  mistral: ["mistral"],
+  perplexity: ["perplexity"],
+  deepseek: ["deepseek", "deep seek"],
+  cohere: ["cohere"],
+  groq: ["groq"],
+  huggingface: ["hugging face", "huggingface"],
+  together: ["together ai", "together.ai", "togetherai"],
+  fireworks: ["fireworks"],
+  openrouter: ["openrouter", "open router"],
+  "github-copilot": ["copilot"],
+  deepinfra: ["deepinfra", "deep infra"],
+};
+const SOCIAL_INTENT = /(^|[^a-z0-9])(down|up|status|outages?|working|works?|broken|issues?|problems?|errors?|slow|offline|online|dead|ok|okay|overloaded|5\d\d|429)(?=$|[^a-z0-9])/;
+function aliasAt(text, alias) {
+  const re = new RegExp("(^|[^a-z0-9])" + alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=$|[^a-z0-9])");
+  const m = re.exec(text);
+  return m ? m.index + m[1].length : -1;
+}
+// Board services named in the text, in the order they appear.
+function servicesNamed(text, boardServices) {
+  const t = String(text).toLowerCase();
+  const hits = [];
+  for (const svc of boardServices) {
+    const aliases = SOCIAL_ALIASES[svc.id] || [String(svc.name || "").toLowerCase()];
+    let at = -1;
+    for (const a of aliases) {
+      const i = a ? aliasAt(t, a) : -1;
+      if (i >= 0 && (at < 0 || i < at)) at = i;
+    }
+    if (at >= 0) hits.push({ at, svc });
+  }
+  return hits.sort((a, b) => a.at - b.at).map((h) => h.svc);
+}
+
+// Lane B: common questions, with a suggested answer for a human to send.
+const SOCIAL_FAQ = [
+  { re: /(^|[^a-z])(alerts?|notify|notifications?|webhooks?|discord|slack)(?=$|[^a-z])/, reply: "Free Discord or Slack alerts: liveoutageradar.com/alerts/ - pick the services, confirm from the message we post in your channel, and every alert has an unsubscribe link." },
+  { re: /(^|[^a-z])(free|cost|costs|price|pricing|paid|pay)(?=$|[^a-z])/, reply: "Yes, it's free: the board, the history pages, RSS feeds and alerts. liveoutageradar.com" },
+  { re: /(^|[^a-z])(add|track|monitor|support|cover)(?=$|[^a-z])/, reply: "Thanks! Which service? We add services when we can check them reliably for free. Current list: liveoutageradar.com" },
+  { re: /(^|[^a-z])(how|works?|checks?|measure)(?=$|[^a-z])/, reply: "Every 5 minutes we read each service's official status feed and check that its API server answers. Both are shown side by side: liveoutageradar.com" },
+];
+function faqFor(text) {
+  const t = String(text).toLowerCase();
+  const hit = SOCIAL_FAQ.find((f) => f.re.test(t));
+  return hit ? hit.reply : null;
+}
+
+// People's words, made safe for one Discord line (pings are off anyway).
+function quoteText(text) {
+  const t = String(text).replace(/[\u0000-\u001f\u007f`]+/g, " ").replace(/\s+/g, " ").trim();
+  return "\"" + (t.length > 140 ? t.slice(0, 137) + "..." : t) + "\"";
+}
+function who(author) {
+  const h = typeof author.handle === "string" && /^[a-z0-9.-]{1,100}$/i.test(author.handle) ? author.handle : author.did;
+  return "@" + h;
+}
+function postLink(n) {
+  return "https://bsky.app/profile/" + n.author.did + "/post/" + n.uri.split("/").pop();
+}
+function validNote(n) {
+  return n && typeof n.uri === "string" && n.uri.startsWith("at://") && typeof n.cid === "string" &&
+    n.author && typeof n.author.did === "string" && typeof n.reason === "string" &&
+    n.record && typeof n.record.text === "string";
+}
+function isBotAuthor(author) {
+  return Array.isArray(author.labels) && author.labels.some((l) => l && l.val === "bot");
+}
+
+async function socialSet(db, k, v) {
+  await db.prepare("INSERT INTO social_state (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(k, String(v)).run();
+}
+async function socialDel(db, k) {
+  await db.prepare("DELETE FROM social_state WHERE k = ?").bind(k).run();
+}
+
+// One Bluesky request. Never throws, never logs tokens or the password.
+async function bskyCall(run, method, name, opts = {}) {
+  if (run.left <= 1) return { ok: false, status: 0, data: null, error: "budget" }; // one is kept for the digest
+  run.left -= 1;
+  const headers = { accept: "application/json", "user-agent": USER_AGENT };
+  if (opts.body !== undefined) headers["content-type"] = "application/json";
+  if (opts.auth) headers.authorization = "Bearer " + opts.auth;
+  const url = BSKY_XRPC + name + (opts.query ? "?" + opts.query.toString() : "");
+  try {
+    const res = await fetchWithTimeout(url, {
+      method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    }, BSKY_TIMEOUT_MS);
+    let data = null;
+    try { data = await res.json(); } catch (err) { data = null; }
+    return { ok: res.ok, status: res.status, data, error: data && typeof data.error === "string" ? data.error : "" };
+  } catch (err) {
+    return { ok: false, status: 0, data: null, error: "network" };
+  }
+}
+function isAuthError(r) {
+  return r.status === 401 || (r.status === 400 && ["ExpiredToken", "InvalidToken", "AuthenticationRequired"].includes(r.error));
+}
+function goodSession(d) {
+  return d && typeof d.accessJwt === "string" && typeof d.refreshJwt === "string" && typeof d.did === "string";
+}
+async function saveSession(run, d) {
+  run.session = { a: d.accessJwt, r: d.refreshJwt, did: d.did };
+  await socialSet(run.db, "session", await sealHook(run.keys, JSON.stringify(run.session)));
+}
+// At most one login per run, and none for 30 minutes after a failed one.
+async function bskyLogin(run) {
+  if (run.triedLogin) return null;
+  run.triedLogin = true;
+  if (run.now < (Number(run.state.login_wait_until) || 0)) return null;
+  const r = await bskyCall(run, "POST", "com.atproto.server.createSession", {
+    body: { identifier: run.env.BSKY_HANDLE.trim(), password: run.env.BSKY_APP_PASSWORD.trim() },
+  });
+  if (r.ok && goodSession(r.data)) {
+    await saveSession(run, r.data);
+    if (run.state.login_warned) { await socialDel(run.db, "login_warned"); delete run.state.login_warned; }
+    return run.session;
+  }
+  if (r.error === "budget") return null;
+  await socialSet(run.db, "login_wait_until", run.now + SOCIAL_LOGIN_WAIT_MS);
+  if (!run.state.login_warned) {
+    run.lines.push("Bluesky login failed (" + (r.status ? "HTTP " + r.status : "no answer") + "). Trying again in 30 minutes. Check BSKY_HANDLE and BSKY_APP_PASSWORD.");
+    await socialSet(run.db, "login_warned", "1");
+    run.state.login_warned = "1";
+  }
+  return null;
+}
+async function bskySession(run) {
+  if (run.session) return run.session;
+  if (run.state.session && !run.droppedSession) {
+    const text = await openHook(run.keys, run.state.session);
+    try {
+      const s = text ? JSON.parse(text) : null;
+      if (s && typeof s.a === "string" && typeof s.r === "string" && typeof s.did === "string") run.session = s;
+    } catch (err) {
+      run.session = null;
+    }
+    if (run.session) return run.session;
+  }
+  return bskyLogin(run);
+}
+async function bskyRefresh(run) {
+  if (!run.session || run.triedRefresh) return null;
+  run.triedRefresh = true;
+  const r = await bskyCall(run, "POST", "com.atproto.server.refreshSession", { auth: run.session.r });
+  if (r.ok && goodSession(r.data)) {
+    await saveSession(run, r.data);
+    return run.session;
+  }
+  if (r.error === "budget") return null;
+  run.session = null;
+  run.droppedSession = true;
+  await socialDel(run.db, "session");
+  return bskyLogin(run);
+}
+// Signed-in request: on an auth error, refresh (or log in) once and retry once.
+async function bskyAuthed(run, method, name, opts = {}) {
+  let s = await bskySession(run);
+  if (!s) return { ok: false, status: 0, data: null, error: "no session" };
+  let r = await bskyCall(run, method, name, { ...opts, auth: s.a });
+  if (!r.ok && isAuthError(r)) {
+    s = await bskyRefresh(run);
+    if (!s) return r;
+    r = await bskyCall(run, method, name, { ...opts, auth: s.a });
+  }
+  return r;
+}
+
+// Live mode posts only after the profile carries the "bot" self-label.
+async function ensureBotLabel(run) {
+  if (run.state.labeled === "1") return true;
+  const s = await bskySession(run);
+  if (!s) return false;
+  const q = new URLSearchParams({ repo: s.did, collection: "app.bsky.actor.profile", rkey: "self" });
+  const got = await bskyAuthed(run, "GET", "com.atproto.repo.getRecord", { query: q });
+  const rec = got.ok && got.data && got.data.value && typeof got.data.value === "object" ? got.data.value : null;
+  let ok = false;
+  if (rec) {
+    const values = rec.labels && Array.isArray(rec.labels.values) ? rec.labels.values.filter((v) => v && typeof v.val === "string") : [];
+    if (values.some((v) => v.val === "bot")) {
+      ok = true;
+    } else {
+      const body = {
+        repo: run.session.did, collection: "app.bsky.actor.profile", rkey: "self",
+        record: { ...rec, labels: { $type: "com.atproto.label.defs#selfLabels", values: values.concat([{ val: "bot" }]).slice(-10) } },
+      };
+      if (typeof got.data.cid === "string") body.swapRecord = got.data.cid; // only replace the profile we read
+      const put = await bskyAuthed(run, "POST", "com.atproto.repo.putRecord", { body });
+      ok = put.ok;
+      if (ok) run.lines.push("Bluesky profile now carries the \"bot\" self-label (Bluesky's guidance for automated accounts).");
+    }
+  }
+  if (ok) {
+    await socialSet(run.db, "labeled", "1");
+    run.state.labeled = "1";
+    return true;
+  }
+  if (!run.state.label_warned) {
+    run.lines.push("Could not add the bot label to the Bluesky profile, so nothing is posted yet. Retrying next run.");
+    await socialSet(run.db, "label_warned", "1");
+    run.state.label_warned = "1";
+  }
+  return false;
+}
+
+async function socialBoard(env, now) {
+  let state = null;
+  try { state = await cachedState(env.KV); } catch (err) { state = null; }
+  const pub = state && state.public;
+  if (!pub || typeof pub.generated_at_ms !== "number" || !Array.isArray(pub.services) ||
+      now - pub.generated_at_ms > SOCIAL_BOARD_MAX_AGE_MS || pub.generated_at_ms > now + MIN) {
+    return { fresh: false, services: [], at: null };
+  }
+  return { fresh: true, services: pub.services, at: pub.generated_at_ms };
+}
+
+async function createPost(run, record) {
+  return bskyAuthed(run, "POST", "com.atproto.repo.createRecord", {
+    body: { repo: run.session ? run.session.did : "", collection: "app.bsky.feed.post", record },
+  });
+}
+function postRecord(post, now, reply) {
+  const r = { $type: "app.bsky.feed.post", text: post.text, facets: post.facets, createdAt: iso(now), langs: ["en"] };
+  if (reply) r.reply = reply;
+  return r;
+}
+
+async function socialIncidents(run, board, canPost) {
+  const db = run.db;
+  await db.prepare("UPDATE social_events SET done = 1 WHERE done = 0 AND created_ms < ?").bind(run.now - SOCIAL_EVENT_MAX_AGE_MS).run();
+  if (!board.fresh) return;
+  const hour = await db.prepare("SELECT COUNT(*) AS n FROM social_log WHERE kind = 'post' AND created_ms > ?").bind(run.now - 60 * MIN).first("n");
+  let made = 0;
+  const { results } = await db.prepare("SELECT id, service, kind, state, created_ms FROM social_events WHERE done = 0 ORDER BY id LIMIT 20").all();
+  for (const ev of results) {
+    if (made >= SOCIAL_POSTS_PER_RUN || Number(hour) + made >= SOCIAL_POSTS_PER_HOUR || run.left <= 1) break;
+    const done = () => db.prepare("UPDATE social_events SET done = 1 WHERE id = ?").bind(ev.id).run();
+    const svc = board.services.find((s) => s.id === ev.service);
+    const openKey = "open:" + ev.service;
+    let post = null;
+    if (svc && ev.kind === "start" && !GOOD_STATES.includes(svc.overall)) post = startPost(svc, ev);
+    if (svc && ev.kind === "end" && run.state[openKey]) post = endPost(svc, ev, Number(run.state[openKey]));
+    if (!post || post.text.length > POST_MAX) { await done(); continue; }
+    if (canPost) {
+      const r = await createPost(run, postRecord(post, run.now));
+      if (!r.ok && (r.error === "budget" || r.error === "no session")) break; // try again next run
+      if (!r.ok) {
+        run.lines.push("Post failed (" + (r.status ? "HTTP " + r.status : "no answer") + "): " + post.text);
+        await done();
+        continue;
+      }
+      run.lines.push("Posted: " + post.text);
+    } else {
+      run.lines.push("PILOT would post: " + post.text);
+    }
+    made += 1;
+    await db.prepare("INSERT INTO social_log (kind, author, created_ms) VALUES ('post', '', ?)").bind(run.now).run();
+    if (ev.kind === "start") { await socialSet(db, openKey, ev.created_ms); run.state[openKey] = String(ev.created_ms); }
+    else { await socialDel(db, openKey); delete run.state[openKey]; }
+    await done();
+  }
+}
+
+async function socialMentions(run, board, canPost) {
+  const db = run.db;
+  const q = new URLSearchParams();
+  for (const reason of ["mention", "reply", "quote"]) q.append("reasons", reason);
+  q.set("limit", "50");
+  const res = await bskyAuthed(run, "GET", "app.bsky.notification.listNotifications", { query: q });
+  if (!res.ok || !res.data || !Array.isArray(res.data.notifications)) return;
+  const list = res.data.notifications.filter(validNote).slice(0, 50).reverse(); // oldest first
+  if (!list.length) return;
+  const marks = list.map(() => "?").join(",");
+  const seenRows = (await db.prepare("SELECT uri FROM social_seen WHERE uri IN (" + marks + ")").bind(...list.map((n) => n.uri)).all()).results || [];
+  const seen = new Set(seenRows.map((r) => r.uri));
+  let hour = Number(await db.prepare("SELECT COUNT(*) AS n FROM social_log WHERE kind = 'reply' AND created_ms > ?").bind(run.now - 60 * MIN).first("n")) || 0;
+  const perPerson = new Map();
+  const myDid = run.session ? run.session.did : "";
+  let thisRun = 0;
+  const newlySeen = [];
+  const mark = (n) => newlySeen.push(n.uri);
+  for (const n of list) {
+    if (seen.has(n.uri)) continue;
+    if (run.left <= 1) break;
+    if (n.author.did === myDid || isBotAuthor(n.author)) { mark(n); continue; }
+    const from = (n.reason === "quote" ? "Quote" : n.reason === "reply" ? "Reply" : "Mention") + " from " + who(n.author) + ": " + quoteText(n.record.text) + " " + postLink(n);
+    if (n.reason === "quote") { run.lines.push(from); mark(n); continue; }
+    const text = String(n.record.text).toLowerCase();
+    const named = board.fresh ? servicesNamed(text, board.services) : servicesNamed(text, SERVICES.filter(isListed));
+    if (named.length && SOCIAL_INTENT.test(text)) {
+      if (!board.fresh) { run.lines.push("Not auto-answered (board data is old): " + from); mark(n); continue; }
+      if (!perPerson.has(n.author.did)) {
+        perPerson.set(n.author.did, Number(await db.prepare("SELECT COUNT(*) AS n FROM social_log WHERE kind = 'reply' AND author = ? AND created_ms > ?").bind(n.author.did, run.now - 24 * 60 * MIN).first("n")) || 0);
+      }
+      if (hour >= SOCIAL_REPLIES_PER_HOUR || perPerson.get(n.author.did) >= SOCIAL_REPLIES_PER_PERSON_DAY) {
+        run.lines.push("Not auto-answered (reply limit): " + from);
+        mark(n);
+        continue;
+      }
+      if (thisRun >= SOCIAL_REPLIES_PER_RUN) continue; // left for the next run
+      const post = replyPost(named, board.at);
+      if (!post) { run.lines.push(from); mark(n); continue; }
+      const parent = { uri: n.uri, cid: n.cid };
+      const rr = n.record.reply;
+      const root = rr && rr.root && typeof rr.root.uri === "string" && typeof rr.root.cid === "string" ? { uri: rr.root.uri, cid: rr.root.cid } : parent;
+      if (canPost) {
+        const r = await createPost(run, postRecord(post, run.now, { root, parent }));
+        if (!r.ok && (r.error === "budget" || r.error === "no session")) break;
+        if (!r.ok) { run.lines.push("Reply failed (" + (r.status ? "HTTP " + r.status : "no answer") + "): " + from); mark(n); continue; }
+        run.lines.push("Replied to " + who(n.author) + " (" + named.slice(0, 2).map((s) => s.name).join(", ") + "): " + postLink(n));
+      } else {
+        run.lines.push("PILOT would reply to " + who(n.author) + ": \"" + post.text + "\" " + postLink(n));
+      }
+      thisRun += 1;
+      hour += 1;
+      perPerson.set(n.author.did, perPerson.get(n.author.did) + 1);
+      await db.prepare("INSERT INTO social_log (kind, author, created_ms) VALUES ('reply', ?, ?)").bind(n.author.did, run.now).run();
+      mark(n);
+      continue;
+    }
+    const faq = faqFor(text);
+    if (faq) run.lines.push("Question from " + who(n.author) + ": " + quoteText(n.record.text) + " Suggested reply: " + faq + " " + postLink(n));
+    else run.lines.push(from);
+    mark(n);
+  }
+  if (newlySeen.length) {
+    await db.batch(newlySeen.map((uri) => db.prepare("INSERT OR IGNORE INTO social_seen (uri, created_ms) VALUES (?, ?)").bind(uri, run.now)));
+  }
+}
+
+async function sendSocialDigest(run) {
+  if (!run.lines.length || run.digestSent) return;
+  run.digestSent = true;
+  const hook = run.env.DISCORD_SOCIAL_WEBHOOK || run.env.DISCORD_HEALTH_WEBHOOK;
+  if (!hook) return;
+  let body = "**BLUESKY** (" + run.mode + ")";
+  let n = 0;
+  for (const line of run.lines) {
+    if (body.length + 1 + line.length > DIGEST_MAX) break;
+    body += "\n" + line;
+    n += 1;
+  }
+  if (n < run.lines.length) body += "\n...and " + (run.lines.length - n) + " more (see the Bluesky notifications)";
+  await postDiscord(hook, body);
+}
+
+// The every-minute cron calls this after sending alerts.
+async function runSocial(env, now, alertsSent) {
+  const mode = socialMode(env);
+  if (!mode || alertsSent > SOCIAL_ALERT_ROOM) return;
+  const keys = await alertKeys(env);
+  if (!keys) return;
+  const db = env.DB;
+  await ensureSocialSchema(db);
+  const rows = (await db.prepare("SELECT k, v FROM social_state").all()).results || [];
+  const state = {};
+  for (const r of rows) state[r.k] = r.v;
+  const last = Number(state.last_run_ms) || 0;
+  if (last && now - last < SOCIAL_EVERY_MS - SOCIAL_SLACK_MS) return;
+  await db.batch([
+    db.prepare("INSERT INTO social_state (k, v) VALUES ('last_run_ms', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(String(now)),
+    db.prepare("DELETE FROM social_seen WHERE created_ms < ?").bind(now - SOCIAL_KEEP_MS),
+    db.prepare("DELETE FROM social_log WHERE created_ms < ?").bind(now - SOCIAL_KEEP_MS),
+    db.prepare("DELETE FROM social_events WHERE done = 1 OR created_ms < ?").bind(now - SOCIAL_KEEP_MS),
+  ]);
+  const run = { env, db, keys, now, mode, state, left: SOCIAL_MAX_REQUESTS, lines: [], session: null };
+  try {
+    const board = await socialBoard(env, now);
+    let canPost = false;
+    if (mode === "live") {
+      canPost = await ensureBotLabel(run);
+      if (!canPost) return;
+    }
+    await socialIncidents(run, board, canPost);
+    await socialMentions(run, board, canPost);
+  } finally {
+    await sendSocialDigest(run);
+  }
+}
+
 export default {
   async scheduled(event, env, ctx) {
     // v1.15.0: the every-minute trigger only sends subscriber alerts.
     if (event && event.cron === ALERT_SEND_CRON) {
+      let sent = SUB_BATCH; // if sending fails, assume the budget is used
       try {
-        await sendAlerts(env, Date.now());
+        sent = await sendAlerts(env, Date.now());
       } catch (err) {
         console.error("alert sending failed: " + (err && err.name ? err.name : "error"));
+      }
+      // v1.17.0: Bluesky, every 5 minutes, in the room the alerts left.
+      try {
+        await runSocial(env, Date.now(), sent);
+      } catch (err) {
+        console.error("social run failed: " + (err && err.name ? err.name : "error"));
       }
       return;
     }
@@ -2526,6 +3069,11 @@ export default {
       await pruneCounts(env, Date.now());
     } catch (err) {
       console.warn("count cleanup failed");
+    }
+    try {
+      await pruneSocial(env, Date.now());
+    } catch (err) {
+      console.warn("social cleanup failed");
     }
   },
   async fetch(request, env, ctx) {
