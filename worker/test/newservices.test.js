@@ -13,8 +13,11 @@ import {
 
 // v1.13.0: DeepInfra listed; no service is hidden now. The hidden-mode tests
 // stay as a guard for the next service added this way.
-const HIDDEN = [];
-const NEW_URLS = {};
+// v1.18.0 (Nov 15, 2026): six coding and AI services added hidden, to collect
+// samples of our own API checks before they are listed (see wave1.test.js).
+import { NEW_SERVICES, newRoutes } from "./wave1.fixtures.js";
+const HIDDEN = Object.keys(NEW_SERVICES);
+const NEW_URLS = newRoutes();
 
 // Counts KV reads and writes, which Cloudflare also counts as subrequests.
 function countingKV(inner) {
@@ -108,7 +111,9 @@ test("a normal run stays well inside the budget", async () => {
   clk.advance(5);
   await runOnce(worker, env);
   // v1.13.0: 12 feeds + 15 checks = 27.
-  assert.equal(net.calls.length, 27, "every feed and check runs once");
+  // v1.18.0: + 4 feeds and 4 checks of the six hidden services; Cursor and
+  // Claude Code share feeds, Claude Code and Codex share checks = 35.
+  assert.equal(net.calls.length, 35, "every distinct feed and check runs once");
 });
 
 test("saved feed samples from the main run keep their status and body", async () => {

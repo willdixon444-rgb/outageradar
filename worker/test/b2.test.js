@@ -141,5 +141,7 @@ test("a normal run makes the same number of requests as before", async () => {
   clk.advance(5);
   await runOnce(worker, env);
   // v1.13.0: 12 feeds + 15 checks (DeepInfra's feed added).
-  assert.equal(net.calls.length, 27);
+  // v1.18.0: + 4 feeds and 4 checks for the six hidden services (the rest
+  // are shared) = 35.
+  assert.equal(net.calls.length, 35);
 });

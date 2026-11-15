@@ -44,7 +44,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.17.1";
+const VERSION = "1.18.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -327,6 +327,102 @@ const SERVICES = [
     probe_label: API_LABEL,
     probe_words: "API server",
   },
+  // ---- v1.18.0 (Nov 15, 2026): added in hidden sample mode. ----
+  // Feeds and part names were read from the live official feeds on Nov 15,
+  // 2026. Claude Code and Codex use the same API servers as Claude and OpenAI,
+  // so they share those checks. The checks for Cursor, Windsurf, ElevenLabs
+  // and Runway are UNVERIFIED candidates with no expected codes yet (any
+  // answer but 2xx is kept as "odd" with its first characters), so the
+  // samples show who answers before anything is counted as up or down.
+  {
+    // Cursor's status moved to xAI's page; the feed Grok already uses lists
+    // Cursor's parts (ids "cursor-com", "cursor-desktop", "cursor-cli").
+    id: "cursor",
+    name: "Cursor",
+    listed: false,
+    status_page: "https://status.cursor.com",
+    feed: "https://data.x.ai/status/summary.json",
+    samples: [],
+    parser: "components",
+    components: ["cursor.com", "Cursor IDE (Desktop)", "CLI"],
+    probe: "https://api2.cursor.sh",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    listed: false,
+    status_page: "https://status.claude.com",
+    feed: "https://status.claude.com/api/v2/summary.json",
+    samples: [],
+    parser: "components",
+    components: ["Claude Code"],
+    probe: "https://api.anthropic.com/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // components.json, not summary.json: summary.json stops at 25 parts and
+    // leaves the Codex group out.
+    id: "codex",
+    name: "OpenAI Codex",
+    listed: false,
+    status_page: "https://status.openai.com",
+    feed: "https://status.openai.com/api/v2/components.json",
+    samples: [],
+    parser: "components",
+    components: ["Codex Web", "Codex API", "CLI", "VS Code extension"],
+    probe: "https://api.openai.com/v1/models",
+    probe_ok: [401],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // Atlassian Statuspage; the page also lists Netlify parts, not counted.
+    id: "windsurf",
+    name: "Windsurf",
+    listed: false,
+    status_page: "https://status.windsurf.com",
+    feed: "https://status.windsurf.com/api/v2/summary.json",
+    samples: [],
+    parser: "components",
+    components: ["Cascade", "Windsurf Tab"],
+    probe: "https://server.codeium.com",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    // incident.io: the feed gives a page-wide status and no parts.
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    listed: false,
+    status_page: "https://status.elevenlabs.io",
+    feed: "https://status.elevenlabs.io/api/v2/summary.json",
+    samples: [],
+    parser: "statuspage_indicator",
+    probe: "https://api.elevenlabs.io/v1/models",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
+  {
+    id: "runway",
+    name: "Runway",
+    listed: false,
+    status_page: "https://status.runwayml.com",
+    feed: "https://status.runwayml.com/api/v2/summary.json",
+    samples: [],
+    parser: "components",
+    components: ["Public API"],
+    probe: "https://api.dev.runwayml.com/v1/organization",
+    probe_ok: [],
+    probe_label: API_LABEL,
+    probe_words: "API server",
+  },
 ];
 
 // Services shown publicly (the board, status.json, /incidents.json, alerts).
@@ -526,37 +622,67 @@ function parseFeed(service, text, contentType) {
   return { ok: false, status: "unknown", reason: "no parser" };
 }
 
-async function checkFeed(service) {
+// v1.18.0: downloading is separate from reading, so one download of a feed
+// address serves every service that uses it (Cursor shares Grok's feed,
+// Claude Code shares Claude's). Never throws.
+async function downloadFeed(url) {
   const checkedAt = Date.now();
-  if (!service.feed) {
-    // Nothing to fetch. Not a broken feed, so no feed alerts.
-    return { ok: true, status: "unknown", reason: NO_FEED_NOTE, checkedAt };
-  }
   try {
-    const res = await fetchWithTimeout(service.feed, {
+    const res = await fetchWithTimeout(url, {
       headers: { "user-agent": USER_AGENT, accept: "application/json" },
     }, FETCH_TIMEOUT_MS);
     const contentType = res.headers.get("content-type") || "";
     if (!res.ok) {
       discardBody(res);
-      return {
-        ok: false, status: "unknown", reason: "HTTP " + res.status, checkedAt,
-        raw: { http_status: res.status, content_type: contentType, bytes: 0, body: "" },
-      };
+      return { checkedAt, ok: false, code: res.status, contentType, text: "" };
     }
-    const text = await res.text();
-    const parsed = parseFeed(service, text, contentType);
-    // v1.10.0: keep a raw copy so a sample run never downloads the feed twice.
-    return {
-      ...parsed, checkedAt,
-      raw: { http_status: res.status, content_type: contentType, bytes: text.length, body: text.slice(0, SAMPLE_BODY_LIMIT) },
-    };
+    return { checkedAt, ok: true, code: res.status, contentType, text: await res.text() };
   } catch (err) {
+    return { checkedAt, ok: false, code: 0, error: describeError(err), contentType: "", text: "" };
+  }
+}
+
+async function checkFeed(service, download) {
+  if (!service.feed) {
+    // Nothing to fetch. Not a broken feed, so no feed alerts.
+    return { ok: true, status: "unknown", reason: NO_FEED_NOTE, checkedAt: Date.now() };
+  }
+  const d = await (download || downloadFeed)(service.feed);
+  const checkedAt = d.checkedAt;
+  if (d.error) {
     return {
-      ok: false, status: "unknown", reason: describeError(err), checkedAt,
-      raw: { http_status: 0, error: describeError(err), bytes: 0, body: "" },
+      ok: false, status: "unknown", reason: d.error, checkedAt,
+      raw: { http_status: 0, error: d.error, bytes: 0, body: "" },
     };
   }
+  if (!d.ok) {
+    return {
+      ok: false, status: "unknown", reason: "HTTP " + d.code, checkedAt,
+      raw: { http_status: d.code, content_type: d.contentType, bytes: 0, body: "" },
+    };
+  }
+  const parsed = parseFeed(service, d.text, d.contentType);
+  // v1.10.0: keep a raw copy so a sample run never downloads the feed twice.
+  return {
+    ...parsed, checkedAt,
+    raw: { http_status: d.code, content_type: d.contentType, bytes: d.text.length, body: d.text.slice(0, SAMPLE_BODY_LIMIT) },
+  };
+}
+
+// v1.18.0: two services share one API check only when everything that decides
+// the answer is the same: the address, the codes that count, and any text the
+// reply must contain. Otherwise each runs its own.
+function probeKey(service) {
+  const ok = (service.probe_ok || []).slice().sort((a, b) => a - b).join(",");
+  const text = Object.entries(service.probe_ok_text || {})
+    .map(([code, re]) => code + "=" + String(re)).sort().join(";");
+  return service.probe + "|" + ok + "|" + text;
+}
+
+// Runs make(key) once per key; later callers share the same promise.
+function onceBy(map, key, make) {
+  if (!map.has(key)) map.set(key, make());
+  return map.get(key);
 }
 
 // ---------- Site reachable probe ----------
@@ -753,7 +879,9 @@ async function collectSamples(feeds, probes) {
   SERVICES.forEach((s, i) => {
     if (s.feed) out.push({ service: s.id, url: s.feed, ...(feeds[i] && feeds[i].raw ? feeds[i].raw : { http_status: 0, bytes: 0, body: "" }) });
   });
-  const used = SERVICES.filter((s) => s.feed).length + SERVICES.length + FIXED_RESERVE;
+  // v1.18.0: shared feeds and checks are one request each.
+  const used = new Set(SERVICES.filter((s) => s.feed).map((s) => s.feed)).size +
+    new Set(SERVICES.map(probeKey)).size + FIXED_RESERVE;
   const room = Math.max(0, SUBREQUEST_LIMIT - used);
   const extra = [];
   for (const s of SERVICES) for (const u of s.samples || []) extra.push({ service: s.id, url: u });
@@ -1399,8 +1527,13 @@ async function runCheck(env) {
   }
 
   // Each service is checked on its own, so one failure cannot stop the rest.
-  const feeds = await Promise.all(SERVICES.map((s) => checkFeed(s)));
-  const probes = await Promise.all(SERVICES.map((s) => checkProbe(s)));
+  // v1.18.0: one download per feed address and one run per distinct check.
+  const downloads = new Map();
+  const download = (url) => onceBy(downloads, url, () => downloadFeed(url));
+  const feeds = await Promise.all(SERVICES.map((s) => checkFeed(s, download)));
+  const probeRuns = new Map();
+  const probes = await Promise.all(SERVICES.map((s) =>
+    onceBy(probeRuns, probeKey(s), () => checkProbe(s)).then((r) => ({ ...r, headers: { ...r.headers } }))));
 
   // One-time raw samples for mapping review.
   try {

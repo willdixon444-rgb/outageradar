@@ -18,6 +18,33 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Six services in hidden sample mode, shared requests (v1.18.0, Nov 15, 2026)
+
+- Added hidden (checked, sampled once, never public, never alerted): Cursor,
+  Claude Code, OpenAI Codex, Windsurf, ElevenLabs, Runway. Feeds and part
+  names were read from the live official feeds on Nov 15, 2026:
+  - Cursor: Grok's feed (data.x.ai/status/summary.json) lists Cursor's parts;
+    counted: "cursor.com", "Cursor IDE (Desktop)", "CLI".
+  - Claude Code: "Claude Code" part of status.claude.com/api/v2/summary.json.
+  - Codex: status.openai.com/api/v2/components.json ("Codex Web", "Codex
+    API", "CLI", "VS Code extension"); summary.json stops at 25 parts and
+    leaves Codex out.
+  - Windsurf: Statuspage, parts "Cascade" and "Windsurf Tab" (Netlify parts
+    on the same page are not counted).
+  - ElevenLabs: incident.io feed with a page-wide status only.
+  - Runway: Statuspage, part "Public API".
+- API checks: Claude Code and Codex share Claude's and OpenAI's. Cursor
+  (api2.cursor.sh), Windsurf (server.codeium.com), ElevenLabs
+  (api.elevenlabs.io/v1/models) and Runway (api.dev.runwayml.com/v1/organization)
+  are UNVERIFIED candidates with no expected codes, so every answer is kept as
+  "odd" with its first characters for review. Listing needs a later release.
+- xAI's words for a problem are still unknown (only "available" is mapped), so
+  a Cursor or Grok problem shows Unknown until a real sample shows the words.
+- Shared requests: one download per feed address and one run per distinct API
+  check (same address, same counted codes, same required text) per run.
+- Budget: a normal run is 35 fetches + 3 storage calls (was 27 + 3); the
+  one-time sample run is 36 + 4. Little room is left for more services.
+
 ## Bluesky: incident posts and reply assist (v1.17.0, Nov 12, 2026)
 
 Off unless every setting below is present. Facts verified Nov 12, 2026 from
