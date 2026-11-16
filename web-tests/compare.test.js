@@ -68,3 +68,17 @@ test("the homepage links the comparison next to the alerts link", () => {
   const compare = home.indexOf('<a class="errlink" href="/compare/">');
   assert.ok(alerts > 0 && compare > alerts, "compare link follows the alerts link");
 });
+
+// Site v1.24.1 (Nov 16, 2026): on phones the table was about 40px wider than
+// the screen (measured 390px wide in a 350px box on a 390px phone). Narrow
+// screens get smaller table text and tighter cells so it fits from 360px up;
+// the scroll box stays as a fallback for smaller phones.
+test("on narrow screens the comparison table uses smaller text and tighter cells", () => {
+  const m = PAGE.match(/@media \(max-width:40rem\)\{([^{}]*\{[^{}]*\})*\}/g) || [];
+  const rule = m.find((r) => r.includes(".cmp"));
+  assert.ok(rule, "a max-width:40rem rule for .cmp");
+  const size = rule.match(/\.cmp\{[^}]*font-size:([.\d]+)rem/);
+  assert.ok(size && Number(size[1]) <= 0.82, "table text at most .82rem on phones");
+  assert.match(rule, /\.cmp th,\.cmp td\{[^}]*padding:/);
+  assert.match(PAGE, /\.tablewrap\{overflow-x:auto\}/);
+});

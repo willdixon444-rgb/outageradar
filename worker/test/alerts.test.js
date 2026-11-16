@@ -79,9 +79,9 @@ async function claudeRecovers() {
   clk.advance(5); await runOnce(worker, env);
 }
 
-test("this release is v1.21.0", async () => {
+test("this release is v1.22.0", async () => {
   await runOnce(worker, env);
-  assert.ok(env.KV.store.has("samples:v1.21.0"));
+  assert.ok(env.KV.store.has("samples:v1.22.0"));
 });
 
 // ---------- not set up ----------

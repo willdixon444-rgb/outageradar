@@ -207,7 +207,9 @@ test("the dashboard script is served from the Worker itself", async () => {
   assert.equal(res.status, 200);
   assert.match(res.headers.get("content-type"), /javascript/);
   assert.match(body, /\/admin\/data/);
-  assert.doesNotMatch(body, /localStorage|document\.cookie|indexedDB/);
+  // v1.22.0: localStorage is now used for "Remember on this phone" only
+  // (see admin2.test.js); still no cookies or other storage.
+  assert.doesNotMatch(body, /document\.cookie|indexedDB|sessionStorage/);
 });
 
 test("dashboard data needs the right key", async () => {

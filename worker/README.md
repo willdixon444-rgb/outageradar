@@ -18,6 +18,27 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## /admin upgrade (v1.22.0, Nov 16, 2026)
+
+- Traffic-source donut: `/admin/data` adds `source_slices`, the top 5 sources
+  (people only) plus one `rest` slice ("Everything else") sized from the
+  range's total, so the slices always add up to all visits. Each has
+  `{source, n, pct}` (pct to one decimal). The full sources list stays under it.
+  Colors: five colors checked for color blindness on the panel background,
+  gray for "Everything else"; a source keeps its color when the range changes.
+- iPhone home-screen app: `/admin/manifest.webmanifest` and
+  `/admin/icon-180.png` (the radar avatar, made by `python3 tools/admin_icon.py`,
+  which rewrites the `ADMIN_ICON_180_B64` line). Neither holds data, so neither
+  needs the key. The security policy adds `manifest-src 'self'`.
+  To install: open data.liveoutageradar.com/admin in Safari, Share, Add to Home
+  Screen. It opens full-screen.
+- "Remember on this phone" (ticked by default): the key is saved in that
+  browser's local storage (name `outageradar_admin_key`) only after the server
+  accepted it. A wrong key (HTTP 401) wipes it; "Forget this phone" wipes it
+  and locks. Untick the box to use the key for this visit only. The key is
+  still only ever sent as a header, never in a URL. Only the owner uses /admin,
+  so the public site's "nothing stored in your browser" promise is unchanged.
+
 ## Uptime (v1.21.0, Nov 16, 2026)
 
 /incidents.json gives each service uptime.official and uptime.check (null when
@@ -351,7 +372,8 @@ bluesky-social/atproto) and docs.bsky.app (rate limits, bot guidance).
 - Dashboard: `https://data.liveoutageradar.com/admin`. The page itself holds no
   data. Data comes from `/admin/data`, which needs the `ADMIN_KEY` secret
   (24+ characters) sent as a header, never in the URL. Wrong key = 401;
-  missing or short secret = locked (503).
+  missing or short secret = locked (503). Since v1.22.0 the key can be
+  remembered on the owner's phone (see "/admin upgrade" above).
 - Privacy page updated first (Nov 7, 2026) to describe exactly this.
 
 ## Sample mode (the default)

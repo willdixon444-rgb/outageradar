@@ -38,6 +38,7 @@ const STYLES = `
 .cmp tbody th{color:var(--muted);font-weight:600}
 .tablewrap{overflow-x:auto}
 .small{color:var(--muted);font-size:.9rem}
+@media (max-width:40rem){.cmp{font-size:.8rem}.cmp th,.cmp td{padding:.5rem .3rem}}
 `;
 
 export function renderComparePage() {
