@@ -33,6 +33,7 @@ Each service page except GitHub Copilot's also has an "If X is down: switch to a
 ## Outage alerts
 
 - [Outage alerts in Discord or Slack](https://liveoutageradar.com/alerts/): free alerts for any of the services above, posted to a Discord or Slack channel through a webhook. No account or email; one confirmation message first; unsubscribe link in every alert.
+- [Free alerts compared](https://liveoutageradar.com/compare/): OutageRadar vs IsDown vs StatusGator, prices checked November 16, 2026
 
 ## API error pages
 

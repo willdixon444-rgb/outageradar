@@ -63,12 +63,14 @@ export function renderAlertsPage() {
   const boxes = SHELL.map((s) => '<label><input type="checkbox" name="service" value="' + s.id + '"> ' + esc(s.name) + "</label>").join("\n          ");
   return `${head("Outage alerts in Discord or Slack | OutageRadar", {
     url: "https://liveoutageradar.com/alerts/",
-    description: "Free outage alerts for ChatGPT, Claude, Gemini and 12 more AI services, posted to your Discord or Slack channel. No account, no email.",
+    // v1.24.0: the count comes from the board, so it can't go stale.
+    description: "Free outage alerts for ChatGPT, Claude, Gemini and " + (SHELL.length - 3) + " more AI services, posted to your Discord or Slack channel. No account, no email.",
   })}
 <body data-alerts="subscribe">
 <div class="wrap">
   ${TOP}
   <h1 class="page-h1">Get outage alerts in Discord or Slack</h1>
+  <p class="lede"><strong>Free outage alerts for all ${SHELL.length} AI services. No account, no card, no monthly cap.</strong> <a href="/compare/">How this compares with IsDown and StatusGator</a>.</p>
   <p class="lede">Paste a webhook for the channel you want alerts in and pick the services. We post one message there with a confirm link. Nothing else is sent until someone in that channel confirms. Free, with no account and no email.</p>
   <form class="form" id="signup" novalidate>
     <label class="big" for="webhook">Webhook address</label>

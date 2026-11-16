@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { backupsFor, pythonSnippet, jsSnippet } from "./backups.mjs";
 import { ERRORS, errorsFor, renderErrorPage, renderErrorsHub } from "./errors.mjs";
 import { renderAlertsPage, renderTokenPage } from "./alerts.mjs";
+import { renderComparePage } from "./compare.mjs";
 
 export const SITE_URL = "https://liveoutageradar.com";
 // v1.18.2: the sharing image's address carries a fingerprint of the image, so
@@ -286,7 +287,9 @@ function main() {
   // v1.14.0: API error pages and their hub.
   const pages = ERRORS.map((e) => ["errors/" + e.slug + "/", renderErrorPage(e)]).concat([["errors/", renderErrorsHub()]])
     // v1.17.0: alert pages (pilot, hidden).
-    .concat([["alerts/", renderAlertsPage()], ["alerts/confirm/", renderTokenPage("confirm")], ["alerts/unsubscribe/", renderTokenPage("unsubscribe")]]);
+    .concat([["alerts/", renderAlertsPage()], ["alerts/confirm/", renderTokenPage("confirm")], ["alerts/unsubscribe/", renderTokenPage("unsubscribe")]])
+    // v1.24.0: the comparison with IsDown and StatusGator.
+    .concat([["compare/", renderComparePage()]]);
   for (const [path, html] of pages) {
     const dir = new URL("../site/" + path, import.meta.url);
     mkdirSync(dir, { recursive: true });
