@@ -44,7 +44,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.19.0";
+const VERSION = "1.20.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -88,9 +88,17 @@ const SERVICES = [
     id: "openai",
     name: "ChatGPT / OpenAI",
     status_page: "https://status.openai.com",
-    feed: "https://status.openai.com/api/v2/status.json",
+    // v1.20.0: the parts feed (shared with Codex), counting the API parts only
+    // (read from the live feed on Nov 15, 2026; "Login" is left out because
+    // the ChatGPT group has a part with the same name). ChatGPT itself is the
+    // app line. Before, the page-wide word made ChatGPT problems look like API
+    // problems.
+    feed: "https://status.openai.com/api/v2/components.json",
     samples: [],
-    parser: "statuspage_indicator",
+    parser: "components",
+    components: ["Chat Completions", "Responses", "Agents", "Decisions", "Fine-tuning", "Embeddings", "Images",
+      "Batch", "Audio", "Moderations", "Realtime", "Files", "Live"],
+    app: { label: "ChatGPT app", components: ["Conversations"] },
     probe: "https://api.openai.com/v1/models",
     probe_ok: [401],
     probe_label: API_LABEL,
@@ -145,7 +153,12 @@ const SERVICES = [
     status_page: "https://status.claude.com",
     feed: "https://status.claude.com/api/v2/summary.json",
     samples: [],
-    parser: "statuspage_indicator",
+    // v1.20.0: the API part only; claude.ai is the app line. On Nov 15, 2026
+    // claude.ai was degraded while the API was operational, and the page-wide
+    // word showed the whole row as degraded.
+    parser: "components",
+    components: ["Claude API (api.anthropic.com)"],
+    app: { label: "claude.ai app", components: ["claude.ai"] },
     probe: "https://api.anthropic.com/v1/models",
     probe_ok: [401],
     probe_label: API_LABEL,
@@ -670,6 +683,12 @@ async function checkFeed(service, download) {
     };
   }
   const parsed = parseFeed(service, d.text, d.contentType);
+  // v1.20.0: the app line, read from the same download. Never a feed problem:
+  // anything it cannot read is just Unknown.
+  if (service.app) {
+    const a = parseFeed({ parser: "components", components: service.app.components }, d.text, d.contentType);
+    parsed.app = a.ok ? a.status : "unknown";
+  }
   // v1.10.0: keep a raw copy so a sample run never downloads the feed twice.
   return {
     ...parsed, checkedAt,
@@ -1701,6 +1720,11 @@ async function runCheck(env) {
         status: official,
         checked_at_utc: iso(feed.checkedAt),
         note: officialNote,
+        // v1.20.0: rows that count the API only say so, and carry the app line.
+        ...(service.app ? {
+          scope: "api",
+          app: { label: service.app.label, status: isApproved && feed.ok && feed.app ? feed.app : "unknown" },
+        } : {}),
       },
       probe: {
         label: service.probe_label || SITE_LABEL,
@@ -2775,7 +2799,14 @@ function serviceFacts(svc) {
   const official = def && !def.feed ? "no official feed"
     : (svc.official && Object.prototype.hasOwnProperty.call(LABELS, svc.official.status) ? LABELS[svc.official.status] : "Unknown");
   const probe = svc.probe && Object.prototype.hasOwnProperty.call(PROBE_WORDS, svc.probe.status) ? PROBE_WORDS[svc.probe.status] : "unknown";
-  return "Official status: " + official + "; our API check: " + probe + ".";
+  // v1.20.0: rows that count the API only say so, and mention the app when
+  // its official status shows a problem (never when it is fine or unknown).
+  const api = svc.official && svc.official.scope === "api";
+  const app = api && svc.official.app;
+  const appBad = app && typeof app.label === "string" && Object.prototype.hasOwnProperty.call(LABELS, app.status) &&
+    app.status !== "operational" && app.status !== "unknown";
+  return "Official " + (api ? "API " : "") + "status: " + official + "; our API check: " + probe + "." +
+    (appBad ? " " + app.label + ": " + LABELS[app.status] + "." : "");
 }
 function overallLabel(state) {
   return Object.prototype.hasOwnProperty.call(LABELS, state) ? LABELS[state] : "Unknown";

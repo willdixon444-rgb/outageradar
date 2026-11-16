@@ -18,6 +18,25 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## API vs app: Claude and OpenAI (v1.20.0, Nov 15, 2026)
+
+- The Claude row counts only "Claude API (api.anthropic.com)"; the OpenAI row
+  counts only OpenAI's API parts (Chat Completions, Responses, Agents,
+  Decisions, Fine-tuning, Embeddings, Images, Batch, Audio, Moderations,
+  Realtime, Files, Live), read from status.openai.com/api/v2/components.json,
+  which the Codex row already downloads (status.json is no longer fetched:
+  34 fetches a normal run). "Login" is left out: the ChatGPT group has a part
+  with the same name. Part names read from the live feeds on Nov 15, 2026.
+- Each of the two carries an app line from the same download: official.scope
+  "api" and official.app {label, status} ("claude.ai app" from "claude.ai",
+  "ChatGPT app" from "Conversations"). The app line never affects the badge,
+  alerts, incidents or Bluesky posts, is Unknown until the row is approved, and
+  a missing app part is never a feed problem.
+- Bluesky replies say "Official API status" for these rows and add the app
+  line only when the app shows a problem.
+- Why: on Nov 15, 2026 claude.ai was degraded while the Claude API was
+  operational, and the page-wide word showed the whole Claude row as degraded.
+
 ## Five services listed (v1.19.0, Nov 15, 2026)
 
 Listed from the v1.18.0 samples (saved 2026-11-15 23:35 UTC): Cursor, Claude

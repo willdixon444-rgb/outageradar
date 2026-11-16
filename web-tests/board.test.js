@@ -585,3 +585,45 @@ test("the homepage loads the board script from the site root", () => {
 test("the not-found page stays out of search results", () => {
   assert.match(SITE("404.html"), /noindex/);
 });
+
+// ---------- site v1.22.0 (checker v1.20.0): API status with an app line ----------
+
+const withApp = (status, app) => svc("claude", status, { official: { label: "Official status", status,
+  checked_at_utc: "2026-11-05T01:30:15Z", note: "", scope: "api", app } });
+
+test("a row that counts the API says so, and shows a troubled app on its own line", () => {
+  const view = buildView(fresh(all().map((s) => s.id === "claude" ? withApp("operational", { label: "claude.ai app", status: "degraded" }) : s)), {});
+  const c = view.services.find((s) => s.id === "claude");
+  assert.match(c.official, /^Official API status: Operational \(checked 01:30 UTC\)$/);
+  assert.equal(c.app, "claude.ai app (official): Degraded");
+  assert.equal(c.badge.key, "operational", "an app problem does not change the API badge");
+});
+
+test("the app line also shows when the app is fine, and is empty when unknown or absent", () => {
+  let view = buildView(fresh(all().map((s) => s.id === "claude" ? withApp("operational", { label: "claude.ai app", status: "operational" }) : s)), {});
+  assert.equal(view.services.find((s) => s.id === "claude").app, "claude.ai app (official): Operational");
+  view = buildView(fresh(all().map((s) => s.id === "claude" ? withApp("operational", { label: "claude.ai app", status: "unknown" }) : s)), {});
+  assert.equal(view.services.find((s) => s.id === "claude").app, "");
+  view = buildView(fresh(all()), {});
+  for (const s of view.services) assert.equal(s.app, "", s.id);
+  assert.match(view.services.find((s) => s.id === "mistral").official, /^Official status: /);
+});
+
+test("an app label from the data is shown as text only, never as markup or a strange word", () => {
+  const view = buildView(fresh(all().map((s) => s.id === "claude" ? withApp("operational", { label: "<img src=x>", status: "degraded" }) : s)), {});
+  assert.equal(view.services.find((s) => s.id === "claude").app, "");
+  const v2 = buildView(fresh(all().map((s) => s.id === "claude" ? withApp("operational", { label: "claude.ai app", status: "hacked" }) : s)), {});
+  assert.equal(v2.services.find((s) => s.id === "claude").app, "");
+});
+
+test("the board and the history pages paint the app line", () => {
+  const board = readFileSync(new URL("../site/board.js", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../site/service.js", import.meta.url), "utf8");
+  // The calls, not the function's own definition.
+  assert.match(board, /\n\s+paintApp\(li, m\);/);
+  assert.match(page, /\n\s+paintApp\(row, m\);/);
+});
+
+test("the app line is styled like the official line", () => {
+  assert.match(PAGE, /\.official,\.app,\.probe,\.note\{/);
+});

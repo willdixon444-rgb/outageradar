@@ -7,6 +7,7 @@
 
 import {
   DATA_URL, SHELL, POLL_MS, FETCH_TIMEOUT_MS, TROUBLE_KEYS, buildView, liveState, pollDecision, durationText, utcDate,
+  paintApp,
 } from "./board.js";
 
 export const HISTORY_URL = "https://data.liveoutageradar.com/incidents.json";
@@ -155,6 +156,7 @@ function startPage(id) {
     row.querySelector(".pi").textContent = m.badge.icon;
     row.querySelector(".pl").textContent = m.badge.label;
     row.querySelector(".official").textContent = m.official || "Official status: checking\u2026";
+    paintApp(row, m);
     row.querySelector(".pt").textContent = m.probe.text || "Our check: checking\u2026";
     row.querySelector(".pc").textContent = m.probe.code ? "(" + m.probe.code + ")" : "";
     const note = row.querySelector(".note");

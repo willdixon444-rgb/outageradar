@@ -3,7 +3,8 @@
 
 export const URLS = {
   openai: {
-    feed: "https://status.openai.com/api/v2/status.json",
+    // v1.20.0: the parts feed (shared with Codex), for the API parts only.
+    feed: "https://status.openai.com/api/v2/components.json",
     probe: "https://api.openai.com/v1/models",
   },
   mistral: {
@@ -103,11 +104,16 @@ export const elevenlabsNoKey = () => json({ detail: { type: "not_found", code: "
 export const runwayNoKey = () => json({ error: "No API key was provided. Be sure to include a Bearer token in the Authorization header.",
   docUrl: "https://docs.dev.runwayml.com/api" }, 401);
 // Claude's summary.json lists parts; Claude Code reads its own part.
-export const claudeSummary = (indicator = "none", claudeCode = "operational") =>
-  ({ ...statuspage(indicator), components: [{ name: "claude.ai", status: "operational" }, { name: "Claude Code", status: claudeCode }] });
-export const codexParts = (status = "operational") => ({ components: [
-  { name: "Chat Completions", status: "operational" }, { name: "Codex Web", status },
-  { name: "Codex API", status: "operational" }, { name: "CLI", status: "operational" }, { name: "VS Code extension", status: "operational" },
+export const claudeSummary = (indicator = "none", claudeCode = "operational", api = "operational", app = "operational") =>
+  ({ ...statuspage(indicator), components: [
+    { name: "claude.ai", status: app }, { name: "Claude API (api.anthropic.com)", status: api },
+    { name: "Claude Code", status: claudeCode }] });
+// OpenAI's components.json (shared by the OpenAI and Codex rows).
+export const codexParts = (status = "operational", api = "operational", app = "operational") => ({ components: [
+  ...API_PARTS.openai.map((name) => ({ name, status: api })),
+  { name: "Login", status: "operational" }, { name: "Conversations", status: app }, { name: "Login", status: "operational" },
+  { name: "Codex Web", status }, { name: "Codex API", status: "operational" }, { name: "CLI", status: "operational" },
+  { name: "VS Code extension", status: "operational" },
 ] });
 
 // DeepInfra's /api/v1/status, shaped like the Nov 10, 2026 sample (models cut).
@@ -171,11 +177,27 @@ export function html(body, status = 200, headers = {}) {
   });
 }
 
-export const statuspage = (indicator) => ({
-  page: { id: "x", name: "X", updated_at: "2026-10-01T00:00:00Z" },
-  status: { indicator, description: "desc" },
-  components: [],
-});
+// v1.20.0: like a real Statuspage summary, the parts carry a status that
+// matches the page-wide word. The parts are the ones the Claude and OpenAI rows
+// count (their API parts) and their app parts, so a test that sets a page-wide
+// word for those services still means the same thing. Claude Code is left out:
+// a Claude problem is not a Claude Code problem unless a test says so.
+export const API_PARTS = {
+  claude: ["Claude API (api.anthropic.com)"],
+  openai: ["Chat Completions", "Responses", "Agents", "Decisions", "Fine-tuning", "Embeddings", "Images",
+    "Batch", "Audio", "Moderations", "Realtime", "Files", "Live"],
+};
+export const APP_PARTS = { claude: ["claude.ai"], openai: ["Conversations"] };
+const PART_WORD = { none: "operational", minor: "degraded_performance", major: "partial_outage", critical: "major_outage" };
+export const statuspage = (indicator) => {
+  const word = Object.prototype.hasOwnProperty.call(PART_WORD, indicator) ? PART_WORD[indicator] : String(indicator);
+  const names = [...API_PARTS.claude, ...APP_PARTS.claude, ...API_PARTS.openai, ...APP_PARTS.openai];
+  return {
+    page: { id: "x", name: "X", updated_at: "2026-10-01T00:00:00Z" },
+    status: { indicator, description: "desc" },
+    components: names.map((name) => ({ name, status: word })),
+  };
+};
 
 export const components = (list) => ({ components: list });
 
@@ -207,7 +229,7 @@ export function rss(items = []) {
 export function healthyRoutes() {
   const unauthorized = () => json({ error: { message: "missing api key" } }, 401);
   return {
-    [URLS.openai.feed]: () => json(statuspage("none")),
+    [URLS.openai.feed]: () => json(codexParts()),
     [URLS.mistral.feed]: () => json(statuspage("none")),
     [URLS.perplexity.feed]: () => json(statuspage("none")),
     [URLS.groq.feed]: () =>
@@ -238,7 +260,6 @@ export function healthyRoutes() {
     [URLS.deepinfra.feed]: () => json(deepinfraStatus()),
     [URLS.deepinfra.probe]: () => json({ object: "list", data: [] }, 200),
     [URLS.cursor.probe]: cursorWelcome,
-    [URLS.codex.feed]: () => json(codexParts()),
     [URLS.elevenlabs.feed]: () => json(statuspage("none")),
     [URLS.elevenlabs.probe]: elevenlabsNoKey,
     [URLS.runway.feed]: () => json({ ...statuspage("none"), components: [{ name: "Public API", status: "operational" }] }),

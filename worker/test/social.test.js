@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import worker from "../checker.js";
 import {
-  ALL_IDS, URLS, HEALTH_HOOK, memoryKV, json, html, statuspage, betterstack, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx, runOnce,
+  ALL_IDS, URLS, HEALTH_HOOK, memoryKV, json, html, statuspage, betterstack, claudeSummary, healthyRoutes, installFetch, clock, captureLogs, makeEnv, ctx, runOnce,
 } from "./helpers.js";
 import { sqliteD1 } from "./sqlite-d1.js";
 
@@ -159,9 +159,9 @@ async function claudeRecovers() {
 
 // ---------- version and switches ----------
 
-test("this release is v1.19.0", async () => {
+test("this release is v1.20.0", async () => {
   await board();
-  assert.ok(env.KV.store.has("samples:v1.19.0"));
+  assert.ok(env.KV.store.has("samples:v1.20.0"));
 });
 
 test("off by default: without BSKY_MODE nothing touches Bluesky or the social tables", async () => {
@@ -344,7 +344,7 @@ test("a mention asking if a service is down gets one reply from board data, with
   const r = replies()[0];
   assert.deepEqual(r.reply, { root: { uri: n.uri, cid: n.cid }, parent: { uri: n.uri, cid: n.cid } });
   assert.match(r.text, /^Claude: Operational\./);
-  assert.match(r.text, /Official status: Operational; our API check: answering\./);
+  assert.match(r.text, /Official API status: Operational; our API check: answering\./);
   assert.match(r.text, /As of \d\d:\d\d UTC\./);
   assert.match(r.text, /\(automated\)$/);
   assert.ok(isAscii(r.text) && r.text.length <= 300);
@@ -503,7 +503,7 @@ test("a confirmed major outage gets one post, and its recovery one more", async 
   await claudeOutage(); clk.advance(5); await minute();
   assert.equal(topPosts().length, 1);
   const start = topPosts()[0];
-  assert.match(start.text, /^Claude: Major outage since \d\d:\d\d UTC\. Official status: Major outage; our API check: answering\./);
+  assert.match(start.text, /^Claude: Major outage since \d\d:\d\d UTC\. Official API status: Major outage; our API check: answering\./);
   assert.match(start.text, /\(automated\)$/);
   assert.ok(isAscii(start.text) && start.text.length <= 300);
   assert.deepEqual(linkFacets(start), [{ text: SITE_LINK + "claude/", uri: "https://" + SITE_LINK + "claude/?utm_source=bsky_post", type: "app.bsky.richtext.facet#link" }]);
@@ -621,4 +621,30 @@ test("'OpenAI Codex' and 'codex' answer for Codex only; plain 'Claude' is still 
   assert.doesNotMatch(t[0], /ChatGPT/);
   assert.match(t[1], /^OpenAI Codex: /);
   assert.match(t[2], /^Claude: /);
+});
+
+// ---------- v1.20.0: API and app lines ----------
+
+test("'is Claude down?' while only claude.ai is degraded: the API is fine, and the reply says the app is degraded", async () => {
+  setup({ [URLS.claude.feed]: () => json(claudeSummary("minor", "operational", "operational", "degraded_performance")) });
+  await board();
+  bs.notes.push(note("is claude down?"));
+  await minute();
+  const t = replies()[0].text;
+  assert.match(t, /^Claude: Operational\. Official API status: Operational; our API check: answering\. claude\.ai app: Degraded\./);
+  assert.ok(t.length <= 300 && isAscii(t));
+});
+
+test("the app line is left out when the app is fine", async () => {
+  await board();
+  bs.notes.push(note("is chatgpt down?"));
+  await minute();
+  assert.match(replies()[0].text, /^ChatGPT \/ OpenAI: Operational\. Official API status: Operational; our API check: answering\. As of/);
+});
+
+test("an app-only outage is never posted as an incident", async () => {
+  await board(); await minute();
+  setup({ [URLS.claude.feed]: () => json(claudeSummary("critical", "operational", "operational", "major_outage")) });
+  await board(); clk.advance(5); await board(); clk.advance(5); await minute();
+  assert.equal(topPosts().length, 0);
 });

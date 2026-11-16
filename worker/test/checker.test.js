@@ -56,7 +56,8 @@ test("raw samples are saved once and announced once in the health channel", asyn
   assert.ok(key, "a samples key was saved");
   const saved = JSON.parse(kv.store.get(key));
   assert.ok(saved.feeds.length >= 4);
-  assert.ok(saved.feeds.some((f) => f.url === URLS.openai.feed && f.body.includes("indicator")));
+  // v1.20.0: OpenAI reads its parts feed.
+  assert.ok(saved.feeds.some((f) => f.url === URLS.openai.feed && f.body.includes("Chat Completions")));
   assert.ok(saved.probes.some((p) => p.service === "groq"));
   assert.equal(health().filter((m) => m.includes("Samples saved")).length, 1);
   clk.advance(5);

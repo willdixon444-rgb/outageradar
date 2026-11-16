@@ -115,7 +115,8 @@ test("a normal run stays well inside the budget", async () => {
   // v1.13.0: 12 feeds + 15 checks = 27.
   // v1.18.0: + 4 feeds and 4 checks of the six hidden services; Cursor and
   // Claude Code share feeds, Claude Code and Codex share checks = 35.
-  assert.equal(net.calls.length, 35, "every distinct feed and check runs once");
+  // v1.20.0: OpenAI shares Codex's parts feed = 34.
+  assert.equal(net.calls.length, 34, "every distinct feed and check runs once");
 });
 
 test("saved feed samples from the main run keep their status and body", async () => {

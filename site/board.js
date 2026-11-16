@@ -149,7 +149,35 @@ export function describeOfficial(official, hasFeed) {
   if (/not approved/i.test(note)) return "Official status: not shown yet";
   const word = OFFICIAL_WORDS[official.status] || "Unknown";
   const when = hhmmUtc(official.checked_at_utc);
-  return "Official status: " + word + (when ? " (checked " + when + ")" : "");
+  // v1.22.0: rows that count the API only (Claude, OpenAI) say so.
+  const what = official.scope === "api" ? "Official API status: " : "Official status: ";
+  return what + word + (when ? " (checked " + when + ")" : "");
+}
+
+// v1.22.0: the app's own official status (claude.ai, ChatGPT), on its own line.
+// Empty when absent or unknown. The label comes from our data but is still
+// checked, and only ever shown as text.
+const APP_LABEL = /^[A-Za-z0-9 .()-]{1,40}$/;
+export function describeApp(official) {
+  const app = official && typeof official === "object" ? official.app : null;
+  if (!app || typeof app !== "object" || typeof app.label !== "string" || !APP_LABEL.test(app.label)) return "";
+  const word = Object.prototype.hasOwnProperty.call(OFFICIAL_WORDS, app.status) ? OFFICIAL_WORDS[app.status] : "";
+  return word ? app.label + " (official): " + word : "";
+}
+
+// Fills (or creates) the row's app line, right after the official line.
+export function paintApp(li, m) {
+  let el = li.querySelector(".app");
+  if (!el && m.app) {
+    el = document.createElement("p");
+    el.className = "app";
+    const official = li.querySelector(".official");
+    if (official) official.after(el);
+    else li.appendChild(el);
+  }
+  if (!el) return;
+  el.textContent = m.app || "";
+  el.hidden = !m.app;
 }
 
 // v1.8.0: how long the check took to get an answer. Shown only for a normal
@@ -246,6 +274,7 @@ function shellModel(entry, order, badgeKey) {
     order,
     badge: badgeFor(badgeKey),
     official: entry.nofeed ? describeOfficial(null, false) : "Official status: " + word,
+    app: "",
     probe: { text: "Our check: " + word, code: "" },
     note: "",
     history: "",
@@ -265,6 +294,7 @@ function serviceModel(raw, entry, order, nowMs) {
     order,
     badge,
     official: describeOfficial(raw.official, hasFeed),
+    app: describeApp(raw.official),
     probe: describeProbe(raw.probe),
     note: NOTES[badge.key] || "",
     history: describeIncidents(raw.incidents, nowMs),
@@ -472,6 +502,7 @@ function startBoard() {
         a.textContent = m.name;
         if (m.status_page) a.href = m.status_page;
         li.querySelector(".official").textContent = m.official || "Official status: checking\u2026";
+        paintApp(li, m);
         li.querySelector(".pt").textContent = m.probe.text || "Our check: checking\u2026";
         li.querySelector(".pc").textContent = m.probe.code ? "(" + m.probe.code + ")" : "";
         const note = li.querySelector(".note");

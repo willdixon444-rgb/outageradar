@@ -143,5 +143,6 @@ test("a normal run makes the same number of requests as before", async () => {
   // v1.13.0: 12 feeds + 15 checks (DeepInfra's feed added).
   // v1.18.0: + 4 feeds and 4 checks for the six hidden services (the rest
   // are shared) = 35.
-  assert.equal(net.calls.length, 35);
+  // v1.20.0: OpenAI shares Codex's parts feed (status.json no longer fetched) = 34.
+  assert.equal(net.calls.length, 34);
 });
