@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { SHELL } from "../site/board.js";
-import { historyItems } from "../site/service.js";
+import { historyItems, uptimeLines } from "../site/service.js";
 import { renderServicePage, pageNames, PAGE_LOG_START } from "../tools/status-pages.mjs";
 
 const SITE = (f) => readFileSync(new URL("../site/" + f, import.meta.url), "utf8");
@@ -185,4 +185,41 @@ test("the sitemap lists exactly the board, every history page and the privacy pa
   // + the alerts sign-up page (v1.18.0).
   assert.equal(locs.length, SHELL.length + 2 + 1 + 8 + 1);
   assert.equal(new Set(locs).size, locs.length, "no duplicates");
+});
+
+// ---------- site v1.23.0 (checker v1.21.0): uptime ----------
+
+test("uptime lines say what each number measures, and since when", () => {
+  const lines = uptimeLines({ uptime: {
+    official: { pct: 99.1, since_utc: "2026-11-04T20:10:00Z" },
+    check: { pct: 98.8, checks: 720, since_utc: "2026-11-18T00:00:00Z" } } });
+  assert.deepEqual(lines, [
+    "Official status: no reported problems 99.1% of the time since Nov 4.",
+    "Our API check: answered 98.8% of 720 checks since Nov 18.",
+  ]);
+});
+
+test("100 shows as 100, and a missing figure is simply left out", () => {
+  assert.deepEqual(uptimeLines({ uptime: { official: { pct: 100, since_utc: "2026-11-10T00:00:00Z" }, check: null } }),
+    ["Official status: no reported problems 100% of the time since Nov 10."]);
+  assert.deepEqual(uptimeLines({ uptime: { official: null, check: null } }), []);
+  assert.deepEqual(uptimeLines({}), []);
+  assert.deepEqual(uptimeLines(null), []);
+});
+
+test("damaged uptime data is dropped, never shown as a made-up number", () => {
+  for (const bad of [{ pct: "99" }, { pct: 101, since_utc: "2026-11-10T00:00:00Z" }, { pct: -1, since_utc: "2026-11-10T00:00:00Z" },
+    { pct: 99, since_utc: "not a date" }, { pct: NaN, since_utc: "2026-11-10T00:00:00Z" }]) {
+    assert.deepEqual(uptimeLines({ uptime: { official: bad, check: { ...bad, checks: 400 } } }), [], JSON.stringify(bad));
+  }
+  assert.deepEqual(uptimeLines({ uptime: { check: { pct: 99, since_utc: "2026-11-10T00:00:00Z", checks: "lots" } } }), []);
+});
+
+test("every history page has a place for the uptime lines", () => {
+  for (const s of SHELL) {
+    const html = readFileSync(new URL("../site/status/" + s.id + "/index.html", import.meta.url), "utf8");
+    assert.match(html, /<p class="since" id="uptime" hidden><\/p>/, s.id);
+  }
+  const js = readFileSync(new URL("../site/service.js", import.meta.url), "utf8");
+  assert.match(js, /\n\s+paintUptime\(entry\);/);
 });

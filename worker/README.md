@@ -18,6 +18,21 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Uptime (v1.21.0, Nov 16, 2026)
+
+/incidents.json gives each service uptime.official and uptime.check (null when
+there is no figure yet). No extra requests; the check counts live in state:v1.
+- official {pct, since_utc}: share of time with no official incident (degraded
+  or worse; overlaps merged) over the last 30 days or since logging began. No
+  figure under one day of data or for feedless services. If 20 incidents are
+  kept (the log limit), the window starts at the oldest kept one. Claude and
+  OpenAI count from Nov 16, 2026 01:15 UTC (the API-only change).
+- check {pct, checks, since_utc}: answered checks / (answered + failed) over
+  the last 30 days; blocked and odd replies are not counted. Counting began in
+  v1.21.0; no figure until 288 checks (about a day).
+- Figures round down to one decimal, so a short outage never shows as 100.
+History pages show both lines, each saying what it measures and since when.
+
 ## API vs app: Claude and OpenAI (v1.20.0, Nov 15, 2026)
 
 - The Claude row counts only "Claude API (api.anthropic.com)"; the OpenAI row

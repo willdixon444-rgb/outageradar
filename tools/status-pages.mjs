@@ -240,6 +240,7 @@ ${PAGE_STYLES.trim()}
   <section class="sec" aria-labelledby="h-history">
     <h2 id="h-history">${esc(n.short)} outage history</h2>
     <p class="since" id="since">History logged by OutageRadar since ${PAGE_LOG_START}.</p>
+    <p class="since" id="uptime" hidden></p>
     <ul class="history" id="history"><li class="empty">Loading incident history&hellip;</li></ul>
     <noscript><p>The history list needs JavaScript.</p></noscript>
     <p class="since"><a href="/alerts/?service=${s.id}">Get ${esc(n.short)} outage alerts in Discord or Slack</a>, free.</p>

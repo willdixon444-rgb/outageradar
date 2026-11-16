@@ -44,7 +44,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.20.0";
+const VERSION = "1.21.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -99,6 +99,9 @@ const SERVICES = [
     components: ["Chat Completions", "Responses", "Agents", "Decisions", "Fine-tuning", "Embeddings", "Images",
       "Batch", "Audio", "Moderations", "Realtime", "Files", "Live"],
     app: { label: "ChatGPT app", components: ["Conversations"] },
+    // v1.21.0: uptime counts from the API-only change (v1.20.0); older
+    // incidents were recorded under the page-wide word, ChatGPT included.
+    uptime_from: Date.UTC(2026, 10, 16, 1, 15),
     probe: "https://api.openai.com/v1/models",
     probe_ok: [401],
     probe_label: API_LABEL,
@@ -159,6 +162,8 @@ const SERVICES = [
     parser: "components",
     components: ["Claude API (api.anthropic.com)"],
     app: { label: "claude.ai app", components: ["claude.ai"] },
+    uptime_from: Date.UTC(2026, 10, 16, 1, 15), // v1.21.0: as for OpenAI
+
     probe: "https://api.anthropic.com/v1/models",
     probe_ok: [401],
     probe_label: API_LABEL,
@@ -985,6 +990,82 @@ function addLatency(list, ms, now) {
   return list.slice(-LATENCY_KEEP_DAYS);
 }
 
+// ---------- uptime (v1.21.0) ----------
+//
+// From data already kept in state:v1 (no extra requests or writes):
+// - official: share of time with no official incident (degraded or worse);
+// - check: share of our checks that got a real answer, from per-day counts of
+//   answered ("ok") and failed checks. Blocked and odd replies say nothing
+//   about the provider, so they are not counted. Counting began in v1.21.0.
+// Never overstated: windows under a day show nothing, figures round down, a
+// full incident log starts the window at its oldest kept incident.
+const UPTIME_WINDOW_MS = 30 * 24 * 60 * MIN;
+const UPTIME_MIN_WINDOW_MS = 24 * 60 * MIN;
+const UPTIME_MIN_CHECKS = 288; // one day of 5-minute checks
+const CHECKS_KEEP_DAYS = 31;
+
+function validCheckDay(x) {
+  return x && typeof x === "object" && typeof x.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.day) &&
+    Number.isInteger(x.ok) && x.ok >= 0 && Number.isInteger(x.fail) && x.fail >= 0;
+}
+function cleanChecks(state) {
+  const raw = state && state.checks && typeof state.checks === "object" ? state.checks : {};
+  const out = {};
+  for (const s of SERVICES) out[s.id] = Array.isArray(raw[s.id]) ? raw[s.id].filter(validCheckDay).slice(-CHECKS_KEEP_DAYS) : [];
+  return out;
+}
+function addCheck(list, result, now) {
+  if (result !== "ok" && result !== "fail") return list;
+  const day = new Date(now).toISOString().slice(0, 10);
+  let today = list.length && list[list.length - 1].day === day ? list[list.length - 1] : null;
+  if (!today) {
+    today = { day, ok: 0, fail: 0 };
+    list.push(today);
+  }
+  if (result === "ok") today.ok += 1;
+  else today.fail += 1;
+  return list.slice(-CHECKS_KEEP_DAYS);
+}
+// One decimal, rounded down (the small margin absorbs float error).
+function floorPct(x) {
+  return Math.floor(x * 10 + 1e-6) / 10;
+}
+function officialUptime(service, list, sinceMs, now) {
+  if (!service.feed || typeof sinceMs !== "number") return null;
+  let start = Math.max(sinceMs, now - UPTIME_WINDOW_MS, service.uptime_from || 0);
+  if (list.length >= INCIDENT_KEEP) start = Math.max(start, list[0].start_ms);
+  if (now - start < UPTIME_MIN_WINDOW_MS) return null;
+  const spans = list
+    .filter((x) => x.kind === "official")
+    .map((x) => [Math.max(x.start_ms, start), Math.min(x.end_ms === null ? now : x.end_ms, now)])
+    .filter(([a, b]) => b > a)
+    .sort((p, q) => p[0] - q[0]);
+  let down = 0;
+  let from = null;
+  let to = null;
+  for (const [a, b] of spans) {
+    if (to === null || a > to) {
+      if (to !== null) down += to - from;
+      from = a;
+      to = b;
+    } else if (b > to) {
+      to = b;
+    }
+  }
+  if (to !== null) down += to - from;
+  return { pct: down <= 0 ? 100 : floorPct(100 * (1 - down / (now - start))), since_utc: iso(start) };
+}
+function checkUptime(list, now) {
+  const cutoff = new Date(now - UPTIME_WINDOW_MS).toISOString().slice(0, 10);
+  const days = list.filter((d) => d.day >= cutoff);
+  let ok = 0;
+  let fail = 0;
+  for (const d of days) { ok += d.ok; fail += d.fail; }
+  const total = ok + fail;
+  if (total < UPTIME_MIN_CHECKS) return null;
+  return { pct: fail === 0 ? 100 : floorPct((100 * ok) / total), checks: total, since_utc: days[0].day + "T00:00:00Z" };
+}
+
 // ---------- incident log (v1.6) ----------
 //
 // For each approved service: when a problem started and ended, the worst
@@ -1100,6 +1181,7 @@ function buildIncidentsPublic(state, now) {
   const services = [];
   if (state && typeof state === "object") {
     const log = cleanIncidentLog(state);
+    const checks = cleanChecks(state);
     for (const s of SERVICES) {
       if (!isListed(s) || typeof log.since[s.id] !== "number") continue;
       services.push({
@@ -1108,6 +1190,11 @@ function buildIncidentsPublic(state, now) {
         status_page: s.status_page,
         since_utc: iso(log.since[s.id]),
         incidents: log.incidents[s.id].slice().reverse().map((x) => publicIncident(x, now)),
+        // v1.21.0
+        uptime: {
+          official: officialUptime(s, log.incidents[s.id], log.since[s.id], now),
+          check: checkUptime(checks[s.id], now),
+        },
       });
     }
   }
@@ -1588,6 +1675,7 @@ async function runCheck(env) {
   const publicServices = [];
   const log = cleanIncidentLog(state);
   const latency = cleanLatency(state);
+  const checks = cleanChecks(state); // v1.21.0
 
   const alertEvents = []; // v1.15.0: for subscribers; saved after the loop
   for (let i = 0; i < SERVICES.length; i++) {
@@ -1703,6 +1791,7 @@ async function runCheck(env) {
     }
 
     if (probe.result === "ok") latency[service.id] = addLatency(latency[service.id], Math.round(probe.ms), now);
+    checks[service.id] = addCheck(checks[service.id], probe.result, now);
 
     st.last_official = official;
     st.last_probe = probeStatus;
@@ -1742,6 +1831,7 @@ async function runCheck(env) {
   state.incidents = log.incidents;
   state.incident_since = log.since;
   state.latency = latency;
+  state.checks = checks;
 
   state.schema = 1;
   state.version = VERSION;

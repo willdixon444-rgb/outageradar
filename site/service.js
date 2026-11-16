@@ -42,6 +42,29 @@ function whenText(startMs, endMs) {
   return start + " UTC - " + utcDate(endMs) + ", " + hhmm(endMs) + " UTC";
 }
 
+// v1.23.0 (checker v1.21.0): uptime lines from incidents.json. Each says
+// what it measures and since when; a missing or damaged figure is left out.
+function validPct(x) {
+  return typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 100;
+}
+function pctText(x) {
+  return x === 100 ? "100" : x.toFixed(1);
+}
+export function uptimeLines(entry) {
+  const u = entry && typeof entry === "object" && entry.uptime && typeof entry.uptime === "object" ? entry.uptime : null;
+  if (!u) return [];
+  const out = [];
+  const o = u.official;
+  if (o && validPct(o.pct) && Number.isFinite(Date.parse(o.since_utc))) {
+    out.push("Official status: no reported problems " + pctText(o.pct) + "% of the time since " + utcDate(Date.parse(o.since_utc)) + ".");
+  }
+  const c = u.check;
+  if (c && validPct(c.pct) && Number.isInteger(c.checks) && c.checks > 0 && Number.isFinite(Date.parse(c.since_utc))) {
+    out.push("Our API check: answered " + pctText(c.pct) + "% of " + c.checks + " checks since " + utcDate(Date.parse(c.since_utc)) + ".");
+  }
+  return out;
+}
+
 // entry: one service from incidents.json. service: { name, nofeed }.
 // Returns { since, items } or null when the entry is missing or damaged.
 export function historyItems(entry, service) {
@@ -133,6 +156,14 @@ function startPage(id) {
   const liveEl = $("#live");
   const listEl = $("#history");
   const sinceEl = $("#since");
+  const uptimeEl = $("#uptime");
+
+  function paintUptime(entry) {
+    if (!uptimeEl) return;
+    const lines = uptimeLines(entry);
+    uptimeEl.textContent = lines.length ? "Uptime: " + lines.join(" ") : "";
+    uptimeEl.hidden = !lines.length;
+  }
 
   let lastData = null;
   let receivedAt = 0;
@@ -246,6 +277,7 @@ function startPage(id) {
       const data = await getJson(HISTORY_URL);
       const entry = data && Array.isArray(data.services) ? data.services.find((s) => s && s.id === id) : null;
       paintHistory(historyItems(entry, service));
+      paintUptime(entry);
     } catch (err) {
       if (!listEl.querySelector("li:not(.empty)")) {
         listEl.textContent = "";
