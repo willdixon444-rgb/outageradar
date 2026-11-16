@@ -173,8 +173,9 @@ test("llms.txt describes the site, its pages and its data", () => {
   assert.match(txt, /https:\/\/data\.liveoutageradar\.com\/feed\/<id>\.xml/);
   assert.match(txt, /not affiliated/i);
   assert.doesNotMatch(txt, /\bten\b/i);
-  assert.doesNotMatch(txt, /\b(twelve|fourteen)\b/i);
-  assert.match(txt, /fifteen AI services/);
+  assert.doesNotMatch(txt, /\b(twelve|fourteen|fifteen)\b/i);
+  assert.match(txt, /twenty AI services/);
+  for (const name of ["Cursor", "Claude Code", "OpenAI Codex", "ElevenLabs", "Runway"]) assert.match(txt, new RegExp(name), name);
   assert.match(txt, /Gemini, DeepSeek and OpenRouter publish no status feed/);
 });
 

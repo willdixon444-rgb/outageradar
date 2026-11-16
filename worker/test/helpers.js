@@ -69,7 +69,46 @@ export const URLS = {
     feed: "https://status.deepinfra.com/api/v1/status",
     probe: "https://api.deepinfra.com/v1/openai/models",
   },
+  // v1.19.0: listed from the v1.18.0 samples (Nov 15, 2026). Cursor shares
+  // Grok's feed; Claude Code shares Claude's feed and check; Codex shares
+  // OpenAI's check.
+  cursor: {
+    feed: "https://data.x.ai/status/summary.json",
+    probe: "https://api2.cursor.sh",
+  },
+  "claude-code": {
+    feed: "https://status.claude.com/api/v2/summary.json",
+    probe: "https://api.anthropic.com/v1/models",
+  },
+  codex: {
+    feed: "https://status.openai.com/api/v2/components.json",
+    probe: "https://api.openai.com/v1/models",
+  },
+  elevenlabs: {
+    feed: "https://status.elevenlabs.io/api/v2/summary.json",
+    probe: "https://api.elevenlabs.io/v1/models",
+  },
+  runway: {
+    feed: "https://status.runwayml.com/api/v2/summary.json",
+    probe: "https://api.dev.runwayml.com/v1/organization",
+  },
 };
+
+// v1.19.0: answers shaped like the real ones in the v1.18.0 samples (Nov 15, 2026).
+export const cursorWelcome = () => new Response(
+  "Welcome to Cursor. From 20261115-225458-12d09cbaf2b8 (0sbrimvv0j3p) in 0.0163ms.",
+  { status: 200, headers: { "content-type": "text/plain" } });
+export const elevenlabsNoKey = () => json({ detail: { type: "not_found", code: "workspace_not_found",
+  message: "Workspace 1anonymous1 not found.", status: "workspace_not_found", request_id: "fe9e9365" } }, 404);
+export const runwayNoKey = () => json({ error: "No API key was provided. Be sure to include a Bearer token in the Authorization header.",
+  docUrl: "https://docs.dev.runwayml.com/api" }, 401);
+// Claude's summary.json lists parts; Claude Code reads its own part.
+export const claudeSummary = (indicator = "none", claudeCode = "operational") =>
+  ({ ...statuspage(indicator), components: [{ name: "claude.ai", status: "operational" }, { name: "Claude Code", status: claudeCode }] });
+export const codexParts = (status = "operational") => ({ components: [
+  { name: "Chat Completions", status: "operational" }, { name: "Codex Web", status },
+  { name: "Codex API", status: "operational" }, { name: "CLI", status: "operational" }, { name: "VS Code extension", status: "operational" },
+] });
 
 // DeepInfra's /api/v1/status, shaped like the Nov 10, 2026 sample (models cut).
 export function deepinfraStatus(over = {}) {
@@ -178,7 +217,7 @@ export function healthyRoutes() {
     [URLS.perplexity.probe]: unauthorized,
     [URLS.groq.probe]: unauthorized,
     [URLS.groq.site]: () => html("<html><title>GroqCloud</title></html>"),
-    [URLS.claude.feed]: () => json(statuspage("none")),
+    [URLS.claude.feed]: () => json(claudeSummary()),
     [URLS.cohere.feed]: () => json(statuspage("none")),
     [URLS.huggingface.feed]: () => json(betterstack("operational")),
     [URLS.xai.feed]: () => json(xaiSummary()),
@@ -198,6 +237,12 @@ export function healthyRoutes() {
     [URLS["github-copilot"].probe]: () => new Response("bad request: missing required Authorization header\n", { status: 400, headers: { "content-type": "text/plain; charset=utf-8" } }),
     [URLS.deepinfra.feed]: () => json(deepinfraStatus()),
     [URLS.deepinfra.probe]: () => json({ object: "list", data: [] }, 200),
+    [URLS.cursor.probe]: cursorWelcome,
+    [URLS.codex.feed]: () => json(codexParts()),
+    [URLS.elevenlabs.feed]: () => json(statuspage("none")),
+    [URLS.elevenlabs.probe]: elevenlabsNoKey,
+    [URLS.runway.feed]: () => json({ ...statuspage("none"), components: [{ name: "Public API", status: "operational" }] }),
+    [URLS.runway.probe]: runwayNoKey,
   };
 }
 

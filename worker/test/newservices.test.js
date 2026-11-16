@@ -15,8 +15,10 @@ import {
 // stay as a guard for the next service added this way.
 // v1.18.0 (Nov 15, 2026): six coding and AI services added hidden, to collect
 // samples of our own API checks before they are listed (see wave1.test.js).
-import { NEW_SERVICES, newRoutes } from "./wave1.fixtures.js";
-const HIDDEN = Object.keys(NEW_SERVICES);
+// v1.19.0: five of them listed; Windsurf stays hidden (its check answered
+// with a generic network reply, not Windsurf's own).
+import { newRoutes } from "./wave1.fixtures.js";
+const HIDDEN = ["windsurf"];
 const NEW_URLS = newRoutes();
 
 // Counts KV reads and writes, which Cloudflare also counts as subrequests.

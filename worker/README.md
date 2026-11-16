@@ -18,6 +18,24 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Five services listed (v1.19.0, Nov 15, 2026)
+
+Listed from the v1.18.0 samples (saved 2026-11-15 23:35 UTC): Cursor, Claude
+Code, OpenAI Codex, ElevenLabs, Runway. Our checks count only with the
+provider's own words, as seen in the samples; any other reply is "odd":
+- Cursor, api2.cursor.sh: HTTP 200 starting "Welcome to Cursor."
+- ElevenLabs, api.elevenlabs.io/v1/models: HTTP 404 in its own error format
+  ({"detail":{...,"request_id":...}}).
+- Runway, api.dev.runwayml.com/v1/organization: HTTP 401 linking
+  docs.dev.runwayml.com.
+- Claude Code and Codex share Claude's and OpenAI's checks (HTTP 401).
+Windsurf stays hidden: server.codeium.com answered HTTP 404 "fault filter
+abort", a generic network reply. Owner step: add cursor, claude-code, codex,
+elevenlabs and runway to APPROVED_MAPPINGS (until then they show Unknown).
+Bluesky reply assist knows the new names; a longer name wins over a shorter
+one at the same word ("claude code" is Claude Code only, "openai codex" is
+Codex only). No extra requests: they were already checked while hidden.
+
 ## Six services in hidden sample mode, shared requests (v1.18.0, Nov 15, 2026)
 
 - Added hidden (checked, sampled once, never public, never alerted): Cursor,

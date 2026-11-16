@@ -44,7 +44,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.18.0";
+const VERSION = "1.19.0";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -328,6 +328,9 @@ const SERVICES = [
     probe_words: "API server",
   },
   // ---- v1.18.0 (Nov 15, 2026): added in hidden sample mode. ----
+  // v1.19.0: Cursor, Claude Code, Codex, ElevenLabs and Runway listed from the
+  // v1.18.0 samples. Windsurf stays hidden: its check answered HTTP 404 "fault
+  // filter abort", a generic network reply that proves nothing about Windsurf.
   // Feeds and part names were read from the live official feeds on Nov 15,
   // 2026. Claude Code and Codex use the same API servers as Claude and OpenAI,
   // so they share those checks. The checks for Cursor, Windsurf, ElevenLabs
@@ -339,21 +342,22 @@ const SERVICES = [
     // Cursor's parts (ids "cursor-com", "cursor-desktop", "cursor-cli").
     id: "cursor",
     name: "Cursor",
-    listed: false,
     status_page: "https://status.cursor.com",
     feed: "https://data.x.ai/status/summary.json",
     samples: [],
     parser: "components",
     components: ["cursor.com", "Cursor IDE (Desktop)", "CLI"],
     probe: "https://api2.cursor.sh",
-    probe_ok: [],
+    // v1.19.0: the sample answered HTTP 200 "Welcome to Cursor. From <build>".
+    // Counted only with that text, so a parked or generic page never counts.
+    probe_ok: [200],
+    probe_ok_text: { 200: /^\s*Welcome to Cursor\./ },
     probe_label: API_LABEL,
     probe_words: "API server",
   },
   {
     id: "claude-code",
     name: "Claude Code",
-    listed: false,
     status_page: "https://status.claude.com",
     feed: "https://status.claude.com/api/v2/summary.json",
     samples: [],
@@ -369,7 +373,6 @@ const SERVICES = [
     // leaves the Codex group out.
     id: "codex",
     name: "OpenAI Codex",
-    listed: false,
     status_page: "https://status.openai.com",
     feed: "https://status.openai.com/api/v2/components.json",
     samples: [],
@@ -399,27 +402,32 @@ const SERVICES = [
     // incident.io: the feed gives a page-wide status and no parts.
     id: "elevenlabs",
     name: "ElevenLabs",
-    listed: false,
     status_page: "https://status.elevenlabs.io",
     feed: "https://status.elevenlabs.io/api/v2/summary.json",
     samples: [],
     parser: "statuspage_indicator",
     probe: "https://api.elevenlabs.io/v1/models",
-    probe_ok: [],
+    // v1.19.0: without a key the API answered HTTP 404 in its own error format
+    // ({"detail":{"code":"workspace_not_found",...,"request_id":...}}). Counted
+    // only in that format.
+    probe_ok: [404],
+    probe_ok_text: { 404: /"detail"\s*:\s*\{[\s\S]*"request_id"/ },
     probe_label: API_LABEL,
     probe_words: "API server",
   },
   {
     id: "runway",
     name: "Runway",
-    listed: false,
     status_page: "https://status.runwayml.com",
     feed: "https://status.runwayml.com/api/v2/summary.json",
     samples: [],
     parser: "components",
     components: ["Public API"],
     probe: "https://api.dev.runwayml.com/v1/organization",
-    probe_ok: [],
+    // v1.19.0: without a key the API answered HTTP 401 "No API key was
+    // provided..." with a link to docs.dev.runwayml.com. Counted only with it.
+    probe_ok: [401],
+    probe_ok_text: { 401: /docs\.dev\.runwayml\.com/ },
     probe_label: API_LABEL,
     probe_words: "API server",
   },
@@ -2810,6 +2818,12 @@ const SOCIAL_ALIASES = {
   openrouter: ["openrouter", "open router"],
   "github-copilot": ["copilot"],
   deepinfra: ["deepinfra", "deep infra"],
+  // v1.19.0
+  cursor: ["cursor"],
+  "claude-code": ["claude code", "claude-code", "claudecode"],
+  codex: ["openai codex", "codex"],
+  elevenlabs: ["elevenlabs", "eleven labs", "11labs", "11 labs"],
+  runway: ["runway", "runwayml", "runway ml"],
 };
 const SOCIAL_INTENT = /(^|[^a-z0-9])(down|up|status|outages?|working|works?|broken|issues?|problems?|errors?|slow|offline|online|dead|ok|okay|overloaded|5\d\d|429)(?=$|[^a-z0-9])/;
 function aliasAt(text, alias) {
@@ -2824,13 +2838,17 @@ function servicesNamed(text, boardServices) {
   for (const svc of boardServices) {
     const aliases = SOCIAL_ALIASES[svc.id] || [String(svc.name || "").toLowerCase()];
     let at = -1;
+    let len = 0;
     for (const a of aliases) {
       const i = a ? aliasAt(t, a) : -1;
-      if (i >= 0 && (at < 0 || i < at)) at = i;
+      if (i >= 0 && (at < 0 || i < at || (i === at && a.length > len))) { at = i; len = a.length; }
     }
-    if (at >= 0) hits.push({ at, svc });
+    if (at >= 0) hits.push({ at, len, svc });
   }
-  return hits.sort((a, b) => a.at - b.at).map((h) => h.svc);
+  // v1.19.0: a longer name wins over a shorter one starting at the same word,
+  // so "claude code" is Claude Code only and "openai codex" is Codex only.
+  const kept = hits.filter((h) => !hits.some((o) => o !== h && o.at === h.at && o.len > h.len));
+  return kept.sort((a, b) => a.at - b.at).map((h) => h.svc);
 }
 
 // Lane B: common questions, with a suggested answer for a human to send.

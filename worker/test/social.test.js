@@ -159,9 +159,9 @@ async function claudeRecovers() {
 
 // ---------- version and switches ----------
 
-test("this release is v1.18.0", async () => {
+test("this release is v1.19.0", async () => {
   await board();
-  assert.ok(env.KV.store.has("samples:v1.18.0"));
+  assert.ok(env.KV.store.has("samples:v1.19.0"));
 });
 
 test("off by default: without BSKY_MODE nothing touches Bluesky or the social tables", async () => {
@@ -587,4 +587,38 @@ test("other health and outage messages keep their link previews (only the digest
   const outage = net.discord.filter((d) => d.url !== HEALTH_HOOK || !/BLUESKY/.test(d.body.content));
   assert.ok(outage.length > 0);
   for (const d of outage) assert.equal(d.body.flags, undefined);
+});
+
+// ---------- v1.19.0: the five new services by name ----------
+
+test("new names are answered: Cursor, ElevenLabs, Runway", async () => {
+  await board();
+  bs.notes.push(note("is cursor down?", { who: "n1" }), note("is elevenlabs down", { who: "n2" }), note("runway api broken?", { who: "n3" }));
+  await minute();
+  const t = replies().map((r) => r.text);
+  assert.match(t[0], /^Cursor: /);
+  assert.match(t[1], /^ElevenLabs: /);
+  assert.match(t[2], /^Runway: /);
+  for (const r of replies()) assert.ok(r.text.length <= 300 && isAscii(r.text));
+});
+
+test("'Claude Code' answers for Claude Code only, not Claude too", async () => {
+  await board();
+  bs.notes.push(note("is claude code down for anyone?"));
+  await minute();
+  assert.equal(replies().length, 1);
+  assert.match(replies()[0].text, /^Claude Code: /);
+  assert.doesNotMatch(replies()[0].text, /\bClaude: /);
+  assert.deepEqual(linkFacets(replies()[0]).map((f) => f.text), [SITE_LINK + "claude-code/"]);
+});
+
+test("'OpenAI Codex' and 'codex' answer for Codex only; plain 'Claude' is still Claude", async () => {
+  await board();
+  bs.notes.push(note("is openai codex down?", { who: "x1" }), note("codex not working", { who: "x2" }), note("is claude down?", { who: "x3" }));
+  await minute();
+  const t = replies().map((r) => r.text);
+  assert.match(t[0], /^OpenAI Codex: /);
+  assert.doesNotMatch(t[0], /ChatGPT/);
+  assert.match(t[1], /^OpenAI Codex: /);
+  assert.match(t[2], /^Claude: /);
 });

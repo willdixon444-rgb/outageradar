@@ -43,6 +43,14 @@ export const SHELL = [
   { id: "github-copilot", name: "GitHub Copilot", status_page: "https://www.githubstatus.com", nobackup: true },
   // v1.13.0 (Nov 10, 2026): official feed is DeepInfra's own JSON API.
   { id: "deepinfra", name: "DeepInfra", status_page: "https://status.deepinfra.com" },
+  // v1.21.0 (Nov 15, 2026; checker v1.19.0): listed from the checker's real
+  // samples. Coding tools and media APIs: no drop-in API to switch to, so no
+  // backup box.
+  { id: "cursor", name: "Cursor", status_page: "https://status.cursor.com", nobackup: true },
+  { id: "claude-code", name: "Claude Code", status_page: "https://status.claude.com", nobackup: true },
+  { id: "codex", name: "OpenAI Codex", status_page: "https://status.openai.com", nobackup: true },
+  { id: "elevenlabs", name: "ElevenLabs", status_page: "https://status.elevenlabs.io", nobackup: true },
+  { id: "runway", name: "Runway", status_page: "https://status.runwayml.com", nobackup: true },
 ];
 
 export const COLORS = {

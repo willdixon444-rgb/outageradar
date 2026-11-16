@@ -8,7 +8,7 @@
 // only, no parts) and status.runwayml.com (Atlassian Statuspage, "Public API").
 // The API checks for Cursor, Windsurf, ElevenLabs and Runway are UNVERIFIED
 // candidates: the samples decide whether they are kept.
-import { json, statuspage, components } from "./helpers.js";
+import { json, statuspage } from "./helpers.js";
 
 export const NEW_SERVICES = {
   cursor: {
@@ -37,23 +37,14 @@ export const NEW_SERVICES = {
   },
 };
 
-// Only the addresses no listed service already uses.
+// v1.19.0: only Windsurf is still hidden; its routes. The other five are in
+// helpers.js (URLS and healthyRoutes).
 export function newRoutes() {
-  const unauthorized = () => json({ detail: { status: "invalid_api_key" } }, 401);
   return {
-    [NEW_SERVICES.codex.feed]: () => json(components([
-      { name: "Codex Web", status: "operational" }, { name: "Codex API", status: "operational" },
-      { name: "CLI", status: "operational" }, { name: "VS Code extension", status: "operational" },
-    ])),
     [NEW_SERVICES.windsurf.feed]: () => json({
       ...statuspage("none"),
       components: [{ name: "Cascade", status: "operational" }, { name: "Windsurf Tab", status: "operational" }],
     }),
-    [NEW_SERVICES.elevenlabs.feed]: () => json({ ...statuspage("none"), components: [] }),
-    [NEW_SERVICES.runway.feed]: () => json({ ...statuspage("none"), components: [{ name: "Public API", status: "operational" }] }),
-    [NEW_SERVICES.cursor.probe]: () => new Response("Not Found", { status: 404 }),
-    [NEW_SERVICES.windsurf.probe]: () => new Response("Not Found", { status: 404 }),
-    [NEW_SERVICES.elevenlabs.probe]: unauthorized,
-    [NEW_SERVICES.runway.probe]: unauthorized,
+    [NEW_SERVICES.windsurf.probe]: () => new Response("fault filter abort", { status: 404 }),
   };
 }

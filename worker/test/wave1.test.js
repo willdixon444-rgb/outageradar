@@ -47,10 +47,12 @@ test("each new service is checked at its verified feed and its API check address
   }
 });
 
-test("the new services stay hidden: status.json lists exactly the 15 public ones", async () => {
+test("Windsurf stays hidden (v1.19.0): status.json lists exactly the 20 public ones", async () => {
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
   assert.deepEqual(body.services.map((x) => x.id).sort(), [...ALL_IDS].sort());
+  assert.equal(ALL_IDS.length, 20);
+  assert.ok(!ALL_IDS.includes("windsurf"));
 });
 
 test("shared feeds are downloaded once a run: Cursor with Grok, Claude Code with Claude", async () => {
@@ -89,17 +91,18 @@ test("a shared check answer is the same for both services in the samples", async
   assert.equal(pick("codex").http_status, pick("openai").http_status);
 });
 
-test("a shared feed that fails is reported once, for the public service only", async () => {
+test("a shared feed that fails is one download, read by both services", async () => {
   start({ [URLS.xai.feed]: () => html("<html>bad gateway</html>", 502) });
-  for (let i = 0; i < 4; i++) { await runOnce(worker, env); clk.advance(5); }
-  const text = net.discord.map((d) => d.body.content).join("\n");
-  assert.doesNotMatch(text, /cursor/i);
+  await runOnce(worker, env);
+  assert.equal(callsTo(URLS.xai.feed), 1);
+  const { body } = await getStatus(worker, env);
+  for (const id of ["xai", "cursor"]) assert.equal(body.services.find((x) => x.id === id).official.status, "unknown", id);
 });
 
-test("unverified checks keep the first characters of any answer for review", async () => {
+test("Windsurf's unverified check keeps the first characters of its answer for review", async () => {
   await runOnce(worker, env);
   const s = samples();
-  for (const id of ["cursor", "windsurf", "elevenlabs", "runway"]) {
+  for (const id of ["windsurf"]) {
     const p = s.probes.find((x) => x.service === id);
     assert.ok(p.first_chars && p.first_chars.length > 0, id + " keeps a peek of its answer");
   }

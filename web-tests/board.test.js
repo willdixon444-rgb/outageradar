@@ -30,8 +30,25 @@ const find = (view, id) => view.services.find((s) => s.id === id);
 
 // ---------- never green by default ----------
 
-test("the shell lists all fifteen services", () => {
-  assert.equal(SHELL.length, 15);
+test("the shell lists all twenty services", () => {
+  assert.equal(SHELL.length, 20);
+  // v1.21.0 (checker v1.19.0): coding tools and two media APIs, each with an
+  // official feed and no backup box (no drop-in API to switch to).
+  for (const [id, name, page] of [
+    ["cursor", "Cursor", "https://status.cursor.com"],
+    ["claude-code", "Claude Code", "https://status.claude.com"],
+    ["codex", "OpenAI Codex", "https://status.openai.com"],
+    ["elevenlabs", "ElevenLabs", "https://status.elevenlabs.io"],
+    ["runway", "Runway", "https://status.runwayml.com"],
+  ]) {
+    const s = SHELL.find((x) => x.id === id);
+    assert.ok(s, id);
+    assert.equal(s.name, name);
+    assert.equal(s.status_page, page);
+    assert.ok(!s.nofeed, id + " has an official feed");
+    assert.equal(s.nobackup, true, id + " has no backup box");
+  }
+  assert.ok(!SHELL.some((x) => x.id === "windsurf"), "Windsurf is not listed yet");
   // v1.13.0: DeepInfra, with an official feed and a backup box.
   const di = SHELL.find((x) => x.id === "deepinfra");
   assert.equal(di.status_page, "https://status.deepinfra.com");
@@ -347,14 +364,15 @@ test("every row's static link is the service's real status page", () => {
 
 test("the page text counts the services right and names the new ones", () => {
   assert.doesNotMatch(PAGE, /\bten AI services\b/i);
-  assert.doesNotMatch(PAGE, /\b(twelve|fourteen) AI services\b/i);
-  assert.match(PAGE, /fifteen AI services/);
+  assert.doesNotMatch(PAGE, /\b(twelve|fourteen|fifteen) AI services\b/i);
+  assert.match(PAGE, /twenty AI services/);
   const desc = PAGE.match(/<meta name="description" content="([^"]+)">/)[1];
   assert.match(desc, /Together AI/);
   assert.match(desc, /Fireworks AI/);
   assert.match(desc, /OpenRouter/);
   assert.match(desc, /GitHub Copilot/);
   assert.match(desc, /DeepInfra/);
+  for (const name of ["Cursor", "Claude Code", "OpenAI Codex", "ElevenLabs", "Runway"]) assert.match(desc, new RegExp(name), name);
 });
 
 // ---------- site v1.15.0: layout and the errors link ----------

@@ -38,10 +38,10 @@ const deep = async (over) => {
 };
 const savedSamples = () => JSON.parse(kv.store.get([...kv.store.keys()].find((k) => k.startsWith("samples:"))));
 
-test("fifteen services are public", async () => {
+test("twenty services are public", async () => {
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
-  assert.equal(body.services.length, 15);
+  assert.equal(body.services.length, 20);
 });
 
 // ---------- DeepInfra ----------
@@ -137,7 +137,7 @@ test("status.json drops any unlisted service, even from saved data", async () =>
   kv.store.set("state:v1", JSON.stringify(state));
   const { body } = await getStatus(worker, env);
   assert.ok(!body.services.some((s) => s.id === "microsoft-copilot"));
-  assert.equal(body.services.length, 15);
+  assert.equal(body.services.length, 20);
 });
 
 test("incidents.json drops any unlisted service, even from saved data", async () => {
