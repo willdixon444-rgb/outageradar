@@ -36,7 +36,7 @@ function fakeBsky() {
   const s = {
     notes: [], created: [], puts: [], logins: 0, refreshes: 0, lists: 0, gets: 0, listUrls: [],
     access: null, refresh: null, n: 0, loginFails: false, refreshFails: false, expireNext: false,
-    putFails: false,
+    putFails: false, postFails: false,
     profile: {
       $type: "app.bsky.actor.profile", displayName: "OutageRadar", description: "Live status for AI APIs",
       avatar: { $type: "blob", ref: { $link: "bafyavatar" }, mimeType: "image/png", size: 1234 },
@@ -67,6 +67,9 @@ function fakeBsky() {
     [PDS + "com.atproto.repo.createRecord"]: async (url, init) => {
       if (auth(init) !== "Bearer " + s.access) return json({ error: "InvalidToken" }, 400);
       const b = JSON.parse(init.body);
+      // v1.22.1: like the real server, a post must name our account (repo).
+      if (b.repo !== DID) return json({ error: "InvalidRequest", message: "Input/repo must be a valid did or a handle" }, 400);
+      if (s.postFails) return json({ error: "InvalidRequest", message: "Invalid app.bsky.feed.post record" }, 400);
       s.created.push(b);
       return json({ uri: "at://" + DID + "/app.bsky.feed.post/r" + s.created.length, cid: "cidR" + s.created.length });
     },
@@ -159,9 +162,9 @@ async function claudeRecovers() {
 
 // ---------- version and switches ----------
 
-test("this release is v1.22.0", async () => {
+test("this release is v1.22.1", async () => {
   await board();
-  assert.ok(env.KV.store.has("samples:v1.22.0"));
+  assert.ok(env.KV.store.has("samples:v1.22.1"));
 });
 
 test("off by default: without BSKY_MODE nothing touches Bluesky or the social tables", async () => {
@@ -512,6 +515,29 @@ test("a confirmed major outage gets one post, and its recovery one more", async 
   assert.match(topPosts()[1].text, /^Claude: back to normal at \d\d:\d\d UTC \(problem started \d\d:\d\d UTC\)\./);
   for (let i = 0; i < 3; i++) await socialRun();
   assert.equal(topPosts().length, 2, "each posted once");
+});
+
+// v1.22.1 (Nov 18, 2026): live posts failed with HTTP 400 when the post was
+// the first signed-in call of a run (the account field was filled in before
+// the saved sign-in was loaded, so it went out blank). Once the bot label was
+// saved, that was every run's first post.
+test("the first post of a run goes to our account, even when the bot label is already saved", async () => {
+  await board(); await minute(); // first live run: sign-in and bot label saved
+  assert.equal(db.raw.prepare("SELECT v FROM social_state WHERE k = 'labeled'").get().v, "1");
+  await claudeOutage(); clk.advance(5); await minute();
+  assert.equal(topPosts().length, 1);
+  const made = bs.created.filter((c) => c.collection === "app.bsky.feed.post");
+  assert.ok(made.every((c) => c.repo === DID));
+  assert.doesNotMatch(allDigest(), /Post failed/);
+  assert.match(allDigest(), /Posted: Claude: Major outage/);
+});
+
+test("a failed post names Bluesky's error in Discord", async () => {
+  await board(); await minute();
+  bs.postFails = true;
+  await claudeOutage(); clk.advance(5); await minute();
+  assert.equal(topPosts().length, 0);
+  assert.match(allDigest(), /Post failed \(HTTP 400 InvalidRequest\): Claude: Major outage/);
 });
 
 test("minor (degraded) episodes are not posted", async () => {

@@ -46,7 +46,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.22.0";
+const VERSION = "1.22.1";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -3263,7 +3263,7 @@ async function bskyLogin(run) {
   if (r.error === "budget") return null;
   await socialSet(run.db, "login_wait_until", run.now + SOCIAL_LOGIN_WAIT_MS);
   if (!run.state.login_warned) {
-    run.lines.push("Bluesky login failed (" + (r.status ? "HTTP " + r.status : "no answer") + "). Trying again in 30 minutes. Check BSKY_HANDLE and BSKY_APP_PASSWORD.");
+    run.lines.push("Bluesky login failed (" + bskyWhy(r) + "). Trying again in 30 minutes. Check BSKY_HANDLE and BSKY_APP_PASSWORD.");
     await socialSet(run.db, "login_warned", "1");
     run.state.login_warned = "1";
   }
@@ -3358,10 +3358,22 @@ async function socialBoard(env, now) {
   return { fresh: true, services: pub.services, at: pub.generated_at_ms };
 }
 
+// v1.22.1: load the sign-in first, then name our account (repo). Before, the
+// account was read before the sign-in was loaded, so a run's first post went
+// out with a blank account and Bluesky refused it (HTTP 400).
 async function createPost(run, record) {
+  const s = await bskySession(run);
+  if (!s) return { ok: false, status: 0, data: null, error: "no session" };
   return bskyAuthed(run, "POST", "com.atproto.repo.createRecord", {
-    body: { repo: run.session ? run.session.did : "", collection: "app.bsky.feed.post", record },
+    body: { repo: s.did, collection: "app.bsky.feed.post", record },
   });
+}
+// v1.22.1: "HTTP 400 InvalidRequest" in Discord, so a failure says why.
+// Only Bluesky's short error name, never its message.
+function bskyWhy(r) {
+  if (!r.status) return "no answer";
+  const name = /^[A-Za-z]{1,40}$/.test(r.error || "") ? " " + r.error : "";
+  return "HTTP " + r.status + name;
 }
 function postRecord(post, now, reply) {
   const r = { $type: "app.bsky.feed.post", text: post.text, facets: post.facets, createdAt: iso(now), langs: ["en"] };
@@ -3389,7 +3401,7 @@ async function socialIncidents(run, board, canPost) {
       const r = await createPost(run, postRecord(post, run.now));
       if (!r.ok && (r.error === "budget" || r.error === "no session")) break; // try again next run
       if (!r.ok) {
-        run.lines.push("Post failed (" + (r.status ? "HTTP " + r.status : "no answer") + "): " + post.text);
+        run.lines.push("Post failed (" + bskyWhy(r) + "): " + post.text);
         await done();
         continue;
       }
@@ -3450,7 +3462,7 @@ async function socialMentions(run, board, canPost) {
       if (canPost) {
         const r = await createPost(run, postRecord(post, run.now, { root, parent }));
         if (!r.ok && (r.error === "budget" || r.error === "no session")) break;
-        if (!r.ok) { run.lines.push("Reply failed (" + (r.status ? "HTTP " + r.status : "no answer") + "): " + from); mark(n); continue; }
+        if (!r.ok) { run.lines.push("Reply failed (" + bskyWhy(r) + "): " + from); mark(n); continue; }
         run.lines.push("Replied to " + who(n.author) + " (" + named.slice(0, 2).map((s) => s.name).join(", ") + "): " + postLink(n));
       } else {
         run.lines.push("PILOT would reply to " + who(n.author) + ": \"" + post.text + "\" " + postLink(n));

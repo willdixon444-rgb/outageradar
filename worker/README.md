@@ -18,6 +18,18 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Bluesky post fix (v1.22.1, Nov 18, 2026)
+
+- Bug (live since the bot label was saved, Nov 15): a run's first incident
+  post went out with a blank account (`repo`), because the account was read
+  before the saved sign-in was loaded. Bluesky refused it with HTTP 400; a
+  second post in the same run worked. Replies were not affected.
+- Fix: `createPost` loads the sign-in first, then names the account.
+- Discord now shows Bluesky's error name, e.g. `Post failed (HTTP 400
+  InvalidRequest)`, also for failed replies and logins (never the message).
+- The fake Bluesky in the tests now refuses posts without our account, like
+  the real one. Posts that failed before the fix are not re-sent.
+
 ## /admin upgrade (v1.22.0, Nov 16, 2026)
 
 - Traffic-source donut: `/admin/data` adds `source_slices`, the top 5 sources
