@@ -628,7 +628,7 @@ test("a challenge page is unknown even when its code is listed as answering", as
 });
 
 test("xai reads only the Grok components of its JSON summary once approved", async () => {
-  setup({ [URLS.xai.feed]: () => json(xaiSummary({ "cursor.com": "major_outage" })) });
+  setup({ [URLS.xai.feed]: () => json(xaiSummary({ "cursor-com": "major_outage" })) });
   const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
@@ -637,7 +637,7 @@ test("xai reads only the Grok components of its JSON summary once approved", asy
 });
 
 test("xai status words we have not seen yet are unknown, never a guess", async () => {
-  setup({ [URLS.xai.feed]: () => json(xaiSummary({ "grok.com": "degraded" })) });
+  setup({ [URLS.xai.feed]: () => json(xaiSummary({ "grok-com": "degraded" })) });
   const env = makeEnv(memoryKV(), { APPROVED_MAPPINGS: ALL });
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);

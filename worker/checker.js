@@ -46,7 +46,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.22.1";
+const VERSION = "1.22.2";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -208,8 +208,11 @@ const SERVICES = [
     status_page: "https://status.x.ai",
     feed: "https://data.x.ai/status/summary.json",
     samples: [],
+    // v1.22.2: matched by part id. xAI renamed the parts on Nov 19, 2026
+    // ("Global (api.x.ai)" -> "Grok API: Chat (Global, api.x.ai)",
+    // "grok.com" -> "Grok: grok.com"); the ids stayed the same.
     parser: "components",
-    components: ["Global (api.x.ai)", "grok.com"],
+    component_ids: ["api-global", "grok-com"],
     probe: "https://api.x.ai/v1/models",
     probe_ok: [401],
     probe_label: API_LABEL,
@@ -365,8 +368,9 @@ const SERVICES = [
     status_page: "https://status.cursor.com",
     feed: "https://data.x.ai/status/summary.json",
     samples: [],
+    // v1.22.2: by id (names became "Grok Build and Cursor: ..." on Nov 19).
     parser: "components",
-    components: ["cursor.com", "Cursor IDE (Desktop)", "CLI"],
+    component_ids: ["cursor-com", "cursor-desktop", "cursor-cli"],
     probe: "https://api2.cursor.sh",
     // v1.19.0: the sample answered HTTP 200 "Welcome to Cursor. From <build>".
     // Counted only with that text, so a parked or generic page never counts.
@@ -605,6 +609,26 @@ function parseFeed(service, text, contentType) {
     const mapped = INDICATOR_MAP[ind.toLowerCase()];
     // An indicator we do not recognise is a working feed with an unknown answer.
     return { ok: true, status: mapped || "unknown", reason: mapped ? "" : "unrecognised indicator" };
+  }
+
+  if (service.parser === "components" && Array.isArray(service.component_ids)) {
+    // v1.22.2: by part id, and every part we track must be there (a part that
+    // quietly disappeared would otherwise make the service look healthier).
+    if (!Array.isArray(data.components)) return { ok: false, status: "unknown", reason: "no components list" };
+    const byId = new Map();
+    for (const c of data.components) {
+      if (c && typeof c.id === "string" && !byId.has(c.id)) byId.set(c.id, c);
+    }
+    let worst = null;
+    for (const id of service.component_ids) {
+      const c = byId.get(id);
+      if (!c) return { ok: false, status: "unknown", reason: "expected components missing" };
+      const key = String(c.status || "").toLowerCase().replace(/[\s_-]/g, "");
+      const mapped = COMPONENT_MAP[key];
+      if (!mapped) return { ok: true, status: "unknown", reason: "unrecognised component status" };
+      if (worst === null || SEVERITY[mapped] > SEVERITY[worst]) worst = mapped;
+    }
+    return { ok: true, status: worst, reason: "" };
   }
 
   if (service.parser === "components") {

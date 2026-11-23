@@ -7,7 +7,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import worker from "../checker.js";
 import {
-  ALL_IDS, URLS, memoryKV, json, html, healthyRoutes, installFetch, clock, captureLogs, makeEnv, runOnce, getStatus,
+  xaiSummary, ALL_IDS, URLS, memoryKV, json, html, healthyRoutes, installFetch, clock, captureLogs, makeEnv, runOnce, getStatus,
 } from "./helpers.js";
 import { NEW_SERVICES, newRoutes } from "./wave1.fixtures.js";
 
@@ -73,10 +73,7 @@ test("shared API checks run once a run: Claude Code with Claude, Codex with Open
 });
 
 test("a shared feed still answers for each service: Grok and Claude stay correct", async () => {
-  start({ [URLS.xai.feed]: () => json({ status: { indicator: "none" }, components: [
-    { name: "Global (api.x.ai)", status: "available" }, { name: "grok.com", status: "available" },
-    { name: "cursor.com", status: "major_outage" }, { name: "Cursor IDE (Desktop)", status: "major_outage" },
-  ] }) });
+  start({ [URLS.xai.feed]: () => json(xaiSummary({ "cursor-com": "major_outage", "cursor-desktop": "major_outage" })) });
   await runOnce(worker, env);
   const { body } = await getStatus(worker, env);
   const xai = body.services.find((x) => x.id === "xai");

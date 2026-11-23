@@ -162,9 +162,9 @@ async function claudeRecovers() {
 
 // ---------- version and switches ----------
 
-test("this release is v1.22.1", async () => {
+test("this release is v1.22.2", async () => {
   await board();
-  assert.ok(env.KV.store.has("samples:v1.22.1"));
+  assert.ok(env.KV.store.has("samples:v1.22.2"));
 });
 
 test("off by default: without BSKY_MODE nothing touches Bluesky or the social tables", async () => {

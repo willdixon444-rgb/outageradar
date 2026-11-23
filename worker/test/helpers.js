@@ -206,12 +206,28 @@ export const betterstack = (state) => ({
   included: [],
 });
 
-export function xaiSummary(over = {}) {
-  const base = { "Global (api.x.ai)": "available", "grok.com": "available", "cursor.com": "available" };
-  const merged = { ...base, ...over };
+// xAI's status summary (data.x.ai/status/summary.json) in the format seen on
+// Nov 22, 2026: parts keyed by id, with names that xAI renamed on Nov 19.
+// `over` sets a part's status by id; `drop` leaves parts out; `rename` gives
+// parts other names (ids unchanged).
+export const XAI_PARTS = {
+  "api-global": "Grok API: Chat (Global, api.x.ai)",
+  "api-us": "Grok API: Chat (US, us.api.x.ai)",
+  "grok-com": "Grok: grok.com",
+  "cursor-com": "Grok Build and Cursor: cursor.com",
+  "cursor-desktop": "Grok Build and Cursor: Desktop",
+  "cursor-cli": "Grok Build and Cursor: CLI",
+  "cloud-agents": "Grok Build and Cursor: Cloud Agents",
+  "third-party-models": "Third-party Model Providers",
+};
+export function xaiSummary(over = {}, { drop = [], rename = {} } = {}) {
+  const ids = Object.keys(XAI_PARTS).filter((id) => !drop.includes(id));
   return {
     status: { indicator: "none", description: "All systems operational" },
-    components: Object.entries(merged).map(([name, status]) => ({ id: name, name, status })),
+    components: ids.map((id) => ({
+      id, name: rename[id] || XAI_PARTS[id], label: XAI_PARTS[id].split(": ").pop(),
+      status: over[id] || (id === "third-party-models" ? "info" : "available"),
+    })),
     incidents: [],
   };
 }

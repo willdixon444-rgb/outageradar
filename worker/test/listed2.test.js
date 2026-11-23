@@ -94,10 +94,10 @@ test("a 5xx from a new service's check is a failure, as for every service", asyn
 // ---------- official feeds ----------
 
 test("Cursor reads only Cursor's parts of the shared feed", async () => {
-  start({ [URLS.xai.feed]: () => json(xaiSummary({ "Global (api.x.ai)": "major_outage" })) });
+  start({ [URLS.xai.feed]: () => json(xaiSummary({ "api-global": "major_outage" })) });
   const get = await board();
   assert.equal(get("cursor").official.status, "operational", "a Grok problem is not a Cursor problem");
-  start({ [URLS.xai.feed]: () => json(xaiSummary({ "cursor.com": "something new" })) });
+  start({ [URLS.xai.feed]: () => json(xaiSummary({ "cursor-com": "something new" })) });
   const get2 = await board();
   assert.equal(get2("cursor").official.status, "unknown", "an unknown xAI word is Unknown, never up");
   assert.equal(get2("xai").official.status, "operational");

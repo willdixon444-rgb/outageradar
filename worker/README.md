@@ -18,6 +18,20 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## xAI feed by part id (v1.22.2, Nov 22, 2026)
+
+- On Nov 19 (17:35 UTC) xAI renamed the parts on data.x.ai/status/summary.json
+  ("Global (api.x.ai)" -> "Grok API: Chat (Global, api.x.ai)", "grok.com" ->
+  "Grok: grok.com", "cursor.com" -> "Grok Build and Cursor: cursor.com",
+  "Cursor IDE (Desktop)" -> "Grok Build and Cursor: Desktop", "CLI" ->
+  "Grok Build and Cursor: CLI"). We matched by name, so Grok and Cursor showed
+  Unknown ("expected components missing") for about 3.5 days.
+- The ids did not change. Services with `component_ids` (Grok, Cursor) are now
+  matched by id, and every listed id must be present, or it is a feed problem
+  (a part that quietly disappears can no longer make a service look healthier).
+  Other `components` services still match by name, as before.
+- Test fixture `xaiSummary` now copies the Nov 22 format (ids, new names).
+
 ## Bluesky post fix (v1.22.1, Nov 18, 2026)
 
 - Bug (live since the bot label was saved, Nov 15): a run's first incident
@@ -109,7 +123,8 @@ Codex only). No extra requests: they were already checked while hidden.
   Claude Code, OpenAI Codex, Windsurf, ElevenLabs, Runway. Feeds and part
   names were read from the live official feeds on Nov 15, 2026:
   - Cursor: Grok's feed (data.x.ai/status/summary.json) lists Cursor's parts;
-    counted: "cursor.com", "Cursor IDE (Desktop)", "CLI".
+    counted: "cursor.com", "Cursor IDE (Desktop)", "CLI" (by id since v1.22.2:
+    `cursor-com`, `cursor-desktop`, `cursor-cli`).
   - Claude Code: "Claude Code" part of status.claude.com/api/v2/summary.json.
   - Codex: status.openai.com/api/v2/components.json ("Codex Web", "Codex
     API", "CLI", "VS Code extension"); summary.json stops at 25 parts and
@@ -416,7 +431,8 @@ Added in v1.2 (sample mode until reviewed):
   (UNVERIFIED until sampled). downtime = Major outage.
 - Grok / xAI (v1.3): JSON summary at `data.x.ai/status/summary.json` (on xAI's
   own domain, not in its docs). Only components "Global (api.x.ai)" and
-  "grok.com" count; Cursor products in the same feed are ignored.
+  "grok.com" count (by id since v1.22.2: `api-global`, `grok-com`); Cursor
+  products in the same feed are ignored.
   "available" = Operational; any other word = Unknown until reviewed.
 - Gemini, DeepSeek: no official public feed. Official status is always
   "No official public feed". Once approved, overall uses our check only:
