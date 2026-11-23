@@ -46,7 +46,7 @@
 // Source of truth: GitHub repo willdixon444-rgb/outageradar, worker/checker.js.
 // This file must stay ASCII-only.
 
-const VERSION = "1.22.2";
+const VERSION = "1.22.3";
 
 const STATE_KEY = "state:v1";
 // Versioned so every release collects fresh samples on its first run.
@@ -57,6 +57,10 @@ const STALE_AFTER_MS = 15 * MIN;
 const ALERT_COOLDOWN_MS = 30 * MIN;
 const PROBE_FAILS_TO_CONFIRM = 2;
 const FEED_FAILS_TO_ALERT = 3;
+// v1.22.3: after a missed feed read, the board keeps the last real reading for
+// up to FEED_FAILS_TO_ALERT - 1 misses in a row, and only if that reading is
+// at most this old (2 checks plus a minute of cron jitter).
+const FEED_GRACE_MS = 11 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10000;
 const DISCORD_TIMEOUT_MS = 8000;
 const SAMPLE_BODY_LIMIT = 100000;
@@ -1739,6 +1743,28 @@ async function runCheck(env) {
       }
     }
 
+    // v1.22.3: the board's copy of the official reading. A real reading is kept
+    // (with its time and app line); a missed read shows it again for up to 2
+    // misses in a row. Alerts, subscriber events and the incident log below
+    // keep using the real reading only.
+    let shownOfficial = official;
+    let shownApp = isApproved && feed.ok && feed.app ? feed.app : "unknown";
+    let shownAt = feed.checkedAt;
+    let shownNote = officialNote;
+    if (isApproved && feed.ok) {
+      st.official_good = { status: feed.status, app: feed.app || null, ms: feed.checkedAt };
+    } else if (isApproved && service.feed && !feed.ok) {
+      const g = st.official_good;
+      const fresh = g && typeof g.ms === "number" && typeof g.status === "string" &&
+        now - g.ms <= FEED_GRACE_MS && g.ms <= now;
+      if (fresh && st.feed_fails < FEED_FAILS_TO_ALERT) {
+        shownOfficial = g.status;
+        shownApp = typeof g.app === "string" ? g.app : "unknown";
+        shownAt = g.ms;
+        shownNote = "Feed slow: last confirmed reading shown (" + feed.reason + ")";
+      }
+    }
+
     // Probe signal. Blocked or odd answers are unknown and do not count as failures.
     let probeStatus;
     if (probe.result === "ok") {
@@ -1753,6 +1779,10 @@ async function runCheck(env) {
 
     // Check-only states need the service approved like everything else.
     const overall = isApproved || service.feed ? combine(official, probeStatus, !!service.feed) : "unknown";
+    // v1.22.3: what the board shows. Never a disagreement built on a carried
+    // reading: that needs a real official answer.
+    let shownOverall = shownOfficial === official ? overall : combine(shownOfficial, probeStatus, true);
+    if (shownOfficial !== official && shownOverall === "signals_disagree") shownOverall = "unknown";
 
     // Outage alerts (alerts channel). Only approved services can alert.
     if (isApproved) {
@@ -1829,16 +1859,16 @@ async function runCheck(env) {
       id: service.id,
       name: service.name,
       status_page: service.status_page,
-      overall,
+      overall: shownOverall,
       official: {
         label: "Official status",
-        status: official,
-        checked_at_utc: iso(feed.checkedAt),
-        note: officialNote,
+        status: shownOfficial,
+        checked_at_utc: iso(shownAt),
+        note: shownNote,
         // v1.20.0: rows that count the API only say so, and carry the app line.
         ...(service.app ? {
           scope: "api",
-          app: { label: service.app.label, status: isApproved && feed.ok && feed.app ? feed.app : "unknown" },
+          app: { label: service.app.label, status: shownApp },
         } : {}),
       },
       probe: {

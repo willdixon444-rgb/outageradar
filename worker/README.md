@@ -18,6 +18,21 @@ This folder is NOT public: Render only publishes `site/`.
   `/health` (`ok` if the last run saved within 15 minutes, else HTTP 503).
 - Posts to Discord only when something changes.
 
+## Feed grace period (v1.22.3, Nov 22, 2026)
+
+- DeepInfra's feed sometimes times out from Cloudflare for a run or two while
+  it answers fast elsewhere (Nov 17, Nov 20, Nov 23 02:10 UTC). One missed
+  read used to show Unknown at once, while the FEED PROBLEM alert waits for 3.
+- Now the board keeps the last real reading for up to 2 missed reads in a row,
+  if it is at most 11 minutes old (`FEED_GRACE_MS`), with its real "checked"
+  time and the note "Feed slow: last confirmed reading shown (...)". The 3rd
+  miss shows Unknown, the same run the FEED PROBLEM alert goes out. The app
+  line (claude.ai, ChatGPT) is carried with it. Saved per service as
+  `official_good` `{status, app, ms}`.
+- Board only: alerts, subscriber events, Bluesky incident events, the incident
+  log and uptime use real readings. A carried reading never produces "signals
+  disagree" on the board (shown as Unknown, as before).
+
 ## xAI feed by part id (v1.22.2, Nov 22, 2026)
 
 - On Nov 19 (17:35 UTC) xAI renamed the parts on data.x.ai/status/summary.json
